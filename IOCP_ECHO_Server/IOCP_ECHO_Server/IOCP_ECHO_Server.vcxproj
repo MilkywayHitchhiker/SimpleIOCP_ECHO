@@ -19,9 +19,9 @@
     </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{3FC579DE-3946-4FEC-93D9-D4E347A8B87C}</ProjectGuid>
+    <ProjectGuid>{298C3C88-5C55-484F-A592-1DF2A1E164E2}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
-    <RootNamespace>IOCP_ECHO_Ex_Server</RootNamespace>
+    <RootNamespace>IOCP_ECHO_Server</RootNamespace>
     <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
@@ -145,11 +145,15 @@
     <Text Include="ReadMe.txt" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Packet.h" />
+    <ClInclude Include="RingBuffer.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="IOCP_ECHO_Ex_Server.cpp" />
+    <ClCompile Include="IOCP_ECHO_Server.cpp" />
+    <ClCompile Include="Packet.cpp" />
+    <ClCompile Include="RingBuffer.cpp" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
