@@ -100,7 +100,7 @@ int main()
 		{
 			//키입력 종료처리
 			closesocket (g_ListenSock);
-
+			//세션 정리 및 PQCS 호출. 어떻게?
 
 			break;
 		}
@@ -238,10 +238,10 @@ unsigned int WINAPI WorkerThread (LPVOID pParam)
 				break;
 			}
 
-			//전송데이터가 0 일 경우 해당 세션이 파괴된것이므로 close절차를 밟아나감.
+			//Transferred가 0 일 경우 해당 세션이 파괴된것이므로 종료절차를 밟아나감.
 			p = FindSession (false, SessionID);
 			shutdown (p->sock, SD_BOTH);
-
+			
 			Session_Count_Chk = InterlockedDecrement64 (( volatile LONG64 * )& p->Session_Count);
 			if ( Session_Count_Chk == 0 )
 			{
@@ -255,6 +255,7 @@ unsigned int WINAPI WorkerThread (LPVOID pParam)
 			}
 
 			continue;
+			
 		}
 
 
