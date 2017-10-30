@@ -51,7 +51,7 @@ void SessionClose (Session *p);
 
 HANDLE g_IOCP;
 SOCKET g_ListenSock;
-Session User_Array[100];
+Session User_Array[Session_Max];
 UINT64 SessionID_Count = 1;
 
 UINT64 g_RecvByte;
