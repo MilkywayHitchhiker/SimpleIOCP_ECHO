@@ -1,6 +1,6 @@
 #pragma once
 #include<Windows.h>
-#define dfBuffSize 10000
+#define dfBuffSize 4086
 class CRingbuffer
 {
 protected:
