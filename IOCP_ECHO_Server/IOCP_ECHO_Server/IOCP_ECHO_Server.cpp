@@ -58,9 +58,11 @@ SOCKET g_ListenSock;
 Session User_Array[Session_Max];
 UINT64 SessionID_Count = 1;
 
-UINT64 g_RecvByte;
-UINT64 g_SendByte;
-int	AcceptClientCnt;
+UINT64 g_RecvPacketTPS;
+UINT64 g_SendPacketTPS;
+int	AcceptTotal;
+int AcceptTPS;
+int ConnectSession_Cnt;
 
 
 hiker::CSystemLog *Log = hiker::CSystemLog::GetInstance (LOG_DEBUG);
@@ -89,19 +91,27 @@ int main()
 		Thread[Cnt+1] = ( HANDLE )_beginthreadex (NULL, 0, WorkerThread, 0, NULL, NULL);
 	}
 
-	Log->SetLogDirectory (L"../IOCP_ECHO_Server/LOG_FILE");
+	Log->SetLogDirectory (L"../LOG_FILE");
 
 
 	DWORD StartTime = GetTickCount ();
 	DWORD EndTime;
+
 	while ( 1 )
 	{
 		EndTime = GetTickCount ();
 		if ( EndTime - StartTime >= 1000 )
 		{
-			wprintf (L"==========================\nAccept User Cnt = %d \nSec RecvByte = %lld \nSec SendByte = %lld \n==========================\n", AcceptClientCnt, g_RecvByte, g_SendByte);
-			InterlockedExchange64 (( volatile LONG64 * )&g_RecvByte, 0);
-			InterlockedExchange64 (( volatile LONG64 * )&g_SendByte, 0);
+			wprintf (L"==========================\n");
+			wprintf (L"Accept User Total = %ld \n", AcceptTotal);
+			wprintf (L"AcceptTPS = %ld \n", AcceptTPS); 
+			wprintf (L"Sec RecvTPS = %lld \n", g_RecvPacketTPS);
+			wprintf (L"Sec SendTPS = %lld \n", g_SendPacketTPS);
+			wprintf (L"Connect Session Cnt = %ld \n", ConnectSession_Cnt);
+			wprintf (L"==========================\n");
+			InterlockedExchange64 (( volatile LONG64 * )&g_RecvPacketTPS, 0);
+			InterlockedExchange64 (( volatile LONG64 * )&g_SendPacketTPS, 0);
+			InterlockedExchange (( volatile LONG * )&AcceptTPS, 0);
 			StartTime = EndTime;
 		}
 
@@ -219,13 +229,16 @@ unsigned int WINAPI AcceptThread (LPVOID pParam)
 		p->sock = hClientSock;
 		p->SessionID = InterlockedIncrement64 ((volatile LONG64 *)&SessionID_Count);
 		p->UseFlag = true;
+		InterlockedIncrement (( volatile long * )&ConnectSession_Cnt);
+
 
 		//IOCP 포트에 등록
-		CreateIoCompletionPort (( HANDLE )p->sock, g_IOCP,p->SessionID, 0);
+		CreateIoCompletionPort (( HANDLE )p->sock, g_IOCP,(ULONG_PTR) p, 0);
 
 		PostRecv (p);
 
-		InterlockedIncrement (( volatile long * )&AcceptClientCnt);
+		InterlockedIncrement (( volatile long * )&AcceptTPS);
+		InterlockedIncrement (( volatile long * )&AcceptTotal);
 	}
 
 
@@ -246,19 +259,18 @@ unsigned int WINAPI WorkerThread (LPVOID pParam)
 {
 	wprintf (L"worker_thread_Start\n");
 	DWORD Transferred;
-	INT64 SessionID;
 	BOOL GQCS_Return;
 	OVERLAPPED *pOver;
 
-	Session *p;
+	Session *pSession;
 
 	while ( 1 )
 	{
 		Transferred = 0;
-		SessionID = 0;
+		pSession = NULL;
 		pOver = NULL;
 
-		GQCS_Return = GetQueuedCompletionStatus (g_IOCP, &Transferred, ( UINT64 * )&SessionID, &pOver, INFINITE);
+		GQCS_Return = GetQueuedCompletionStatus (g_IOCP, &Transferred, (PULONG_PTR)&pSession, &pOver, INFINITE);
 
 		//IOCP 자체 에러부
 		if ( GQCS_Return == false && pOver == NULL )
@@ -272,7 +284,7 @@ unsigned int WINAPI WorkerThread (LPVOID pParam)
 		if ( Transferred == 0 )
 		{
 
-			if ( pOver == NULL && SessionID == 0 )
+			if ( pOver == NULL && pSession == 0 )
 			{
 				PostQueuedCompletionStatus (g_IOCP, 0, 0, NULL);
 				break;
@@ -280,22 +292,15 @@ unsigned int WINAPI WorkerThread (LPVOID pParam)
 			else
 			{
 				//Transferred가 0 일 경우 해당 세션이 파괴된것이므로 종료절차를 밟아나감.
-				p = FindSession (false, SessionID);
-				if ( p == NULL )
-				{
-					//존재하지 않는 유저이므로 예외처리하고 continue;
-					Log->Log (L"Network", LOG_DEBUG, L"Not Found User %lld\n", SessionID);
-					continue;
-				}
 
-				shutdown (p->sock, SD_BOTH);
+				shutdown (pSession->sock, SD_BOTH);
 
-				if ( InterlockedDecrement64 (( volatile LONG64 * )& p->IOCount) == 0 )
+				if ( InterlockedDecrement64 (( volatile LONG64 * )& pSession->IOCount) == 0 )
 				{
-					SessionRelease (p);
+					SessionRelease (pSession);
 				}
 				//세션카운터가 0이하면 잘못만들은것이므로 크래쉬 일으켜서 확인.
-				else if ( p->IOCount < 0 )
+				else if ( pSession->IOCount < 0 )
 				{
 					int* a = ( int* )1;
 					int b = *a;
@@ -306,61 +311,53 @@ unsigned int WINAPI WorkerThread (LPVOID pParam)
 		//실제 Recv,Send 처리부
 		else
 		{
-			p = FindSession (false, SessionID);
-			if ( p == NULL )
-			{
-				//존재하지 않는 유저이므로 예외처리하고 continue;
-				Log->Log (L"Network", LOG_DEBUG, L"Not Found User %lld\n", SessionID);
-				continue;
-			}
-
 			//Recv일 경우
-			if ( pOver == &p->RecvOver )
+			if ( pOver == &pSession->RecvOver )
 			{
 				Packet pack;
 
-				p->RecvQ.MoveWritePos (Transferred);
-				p->RecvQ.Get (pack.GetBufferPtr (), Transferred);
+				pSession->RecvQ.MoveWritePos (Transferred);
+				pSession->RecvQ.Get (pack.GetBufferPtr (), Transferred);
 
 				pack.MoveWritePos (Transferred);
 
-				if ( SendPacket (&pack, p) )
+				if ( SendPacket (&pack, pSession) )
 				{
-					PostRecv (p);
+					PostRecv (pSession);
 
-					InterlockedAdd64 (( volatile LONG64 * )&g_RecvByte, Transferred);
+					InterlockedIncrement64 (( volatile LONG64 * )&g_RecvPacketTPS);
 				}
 
 
 			}
-			else if ( pOver == &p->SendOver )
+			else if ( pOver == &pSession->SendOver )
 			{
-				p->SendQ.Lock ();
+				pSession->SendQ.Lock ();
 
-				p->SendQ.RemoveData (Transferred);
+				pSession->SendQ.RemoveData (Transferred);
 
-				p->SendQ.Free ();
+				pSession->SendQ.Free ();
 
-				p->SendFlag = false;
+				pSession->SendFlag = false;
 
 
-				if ( p->SendQ.GetUseSize () > 0 )
+				if ( pSession->SendQ.GetUseSize () > 0 )
 				{
-					PostSend (p);
+					PostSend (pSession);
 				}
 
 
-				InterlockedAdd64 (( volatile LONG64 * )&g_SendByte, Transferred);
+				InterlockedIncrement64 (( volatile LONG64 * )&g_SendPacketTPS);
 
 			}
 
 			//IOCount 차감
-			if ( InterlockedDecrement64 (( volatile LONG64 * )& p->IOCount) == 0 )
+			if ( InterlockedDecrement64 (( volatile LONG64 * )& pSession->IOCount) == 0 )
 			{
-				SessionRelease (p);
+				SessionRelease (pSession);
 			}
 			//세션카운터가 0이하면 잘못만들은것이므로 크래쉬 일으켜서 확인.
-			else if ( p->IOCount < 0 )
+			else if ( pSession->IOCount < 0 )
 			{
 				int* a = ( int* )1;
 				int b = *a;
@@ -410,7 +407,7 @@ void PostRecv (Session *p)
 	int Cnt = 0;
 	DWORD RecvByte;
 	DWORD dwFlag=0;
-	int retval;
+	int retval = -1;
 
 		//세션카운트 1 증가.
 		InterlockedIncrement64 (( volatile LONG64 * )&p->IOCount);
@@ -418,23 +415,34 @@ void PostRecv (Session *p)
 
 		//WSARecv 셋팅 및 등록부
 
-		WSABUF buf[2];
-
-		buf[0].buf = p->RecvQ.GetWriteBufferPtr ();
-		buf[0].len = p->RecvQ.GetNotBrokenPutSize ();
-		Cnt++;
-		if ( p->RecvQ.GetFreeSize () > p->RecvQ.GetNotBrokenPutSize () )
+		if ( p->RecvQ.GetFreeSize () < 0 )
 		{
-			buf[1].buf = p->RecvQ.GetBufferPtr ();
-			buf[1].len = p->RecvQ.GetFreeSize () - p->RecvQ.GetNotBrokenPutSize ();
+			wprintf (L"SendBuffer Overflow %lld\n", p->SessionID);
+			Log->Log (L"Network", LOG_ERROR, L"Recv Buffer Free 0 Byte SessionID = %lld ", p->SessionID);
+			//shutdown (p->sock, SD_BOTH);
+			SessionKill (p);
+		}
+		else
+		{
+			WSABUF buf[2];
+
+			buf[0].buf = p->RecvQ.GetWriteBufferPtr ();
+			buf[0].len = p->RecvQ.GetNotBrokenPutSize ();
 			Cnt++;
+			if ( p->RecvQ.GetFreeSize () > p->RecvQ.GetNotBrokenPutSize () )
+			{
+				buf[1].buf = p->RecvQ.GetBufferPtr ();
+				buf[1].len = p->RecvQ.GetFreeSize () - p->RecvQ.GetNotBrokenPutSize ();
+				Cnt++;
+			}
+
+
+			memset (&p->RecvOver, 0, sizeof (p->RecvOver));
+
+
+			retval = WSARecv (p->sock, buf, Cnt, &RecvByte, &dwFlag, &p->RecvOver, NULL);
 		}
 
-
-		memset (&p->RecvOver, 0, sizeof (p->RecvOver));
-
-
-		retval = WSARecv (p->sock, buf, Cnt, &RecvByte, &dwFlag, &p->RecvOver, NULL);
 
 
 		//에러체크
@@ -445,16 +453,23 @@ void PostRecv (Session *p)
 			//IO_PENDING이라면 문제없이 진행중이므로 그냥 빠져나옴.
 			if ( Errcode != WSA_IO_PENDING )
 			{
-				shutdown (p->sock, SD_BOTH);
 
 				if ( Errcode == WSAENOBUFS )
 				{
 					Log->Log (L"Network", LOG_WARNING, L"SessionID = %lld, ErrorCode = %ld WSAENOBUFS ERROR ", p->SessionID, Errcode);
 				}
+				else if ( retval == -1 )
+				{
+					Log->Log (L"Network", LOG_WARNING, L"SessionID = %lld, Recv Buffer 0 NotRecv", p->SessionID);
+				}
 				else
 				{
 					Log->Log (L"Network", LOG_SYSTEM, L"SessionID = %lld, ErrorCode = %ld", p->SessionID, Errcode);
 				}
+
+
+
+				shutdown (p->sock, SD_BOTH);
 
 				if ( 0 == InterlockedDecrement64 (( volatile LONG64 * )& p->IOCount) )
 				{
@@ -531,7 +546,6 @@ void PostSend (Session *p)
 		//IO_PENDING이라면 문제없이 진행중이므로 그냥 빠져나옴.
 		if ( Errcode != WSA_IO_PENDING )
 		{
-			shutdown (p->sock, SD_BOTH);
 
 			if ( Errcode == WSAENOBUFS )
 			{
@@ -541,6 +555,9 @@ void PostSend (Session *p)
 			{
 				Log->Log (L"Network", LOG_SYSTEM, L"SessionID = %lld, ErrorCode = %ld", p->SessionID, Errcode);
 			}
+
+
+			shutdown (p->sock, SD_BOTH);
 
 			if ( 0 == InterlockedDecrement64 (( volatile LONG64 * )& p->IOCount) )
 			{
@@ -596,7 +613,7 @@ void SessionRelease (Session *p)
 
 	p->UseFlag = false;
 
-	InterlockedDecrement (( volatile long * )&AcceptClientCnt);
+	InterlockedDecrement (( volatile long * )&ConnectSession_Cnt);
 	return;
 }
 
