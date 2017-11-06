@@ -2,7 +2,6 @@
 //
 
 #include "stdafx.h"
-#define _WINSOCK_DEPRECATED_NO_WARNINGS
 
 #include <WS2tcpip.h>
 #pragma comment(lib,"ws2_32.lib")
@@ -332,11 +331,7 @@ unsigned int WINAPI WorkerThread (LPVOID pParam)
 			}
 			else if ( pOver == &pSession->SendOver )
 			{
-				pSession->SendQ.Lock ();
-
 				pSession->SendQ.RemoveData (Transferred);
-
-				pSession->SendQ.Free ();
 
 				pSession->SendFlag = false;
 

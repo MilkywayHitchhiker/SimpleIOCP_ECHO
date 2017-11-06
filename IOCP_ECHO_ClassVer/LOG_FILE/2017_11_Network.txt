@@ -1,0 +1,2 @@
+
+[00000001] [ Network ] [2017-11-06 09:37:28 / SYSTEM ]  SessionID = 2, ErrorCode = 10058
