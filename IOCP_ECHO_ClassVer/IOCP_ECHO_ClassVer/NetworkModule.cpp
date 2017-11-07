@@ -150,7 +150,6 @@ void CLanServer::SendPacket (UINT64 SessionID, Packet *pack)
 
 	LeaveCriticalSection (&p->SessionCS);
 
-
 	return;
 }
 
@@ -165,6 +164,20 @@ void CLanServer::Disconnect (UINT64 SessionID)
 	LeaveCriticalSection (&p->SessionCS);
 
 	return;
+}
+
+void CLanServer::IODecrement (Session * p)
+{
+	if ( 0 == InterlockedDecrement64 (( volatile LONG64 * )& p->IOCount) )
+	{
+		SessionRelease (p);
+	}
+	//세션카운터가 0이하면 잘못만들은것이므로 크래쉬 일으켜서 확인.
+	else if ( p->IOCount < 0 )
+	{
+		int* a = ( int* )1;
+		int b = *a;
+	}
 }
 
 unsigned int CLanServer::AcceptThread (LPVOID pParam)
@@ -284,18 +297,11 @@ void CLanServer::WorkerThread (void)
 			}
 			else
 			{
+				// Log->Log (L"Network", LOG_DEBUG, L"Session %lld, Transferred 0",pSession->SessionID);
 				//Transferred가 0 일 경우 해당 세션이 파괴된것이므로 종료절차를 밟아나감.
 				shutdown (pSession->sock, SD_BOTH);
-				if ( 0 == InterlockedDecrement64 (( volatile LONG64 * )& pSession->IOCount) )
-				{
-					SessionRelease (pSession);
-				}
-				//세션카운터가 0이하면 잘못만들은것이므로 크래쉬 일으켜서 확인.
-				else if ( pSession->IOCount < 0 )
-				{
-					int* a = ( int* )1;
-					int b = *a;
-				}
+
+				IODecrement (pSession);
 			}
 
 
@@ -309,15 +315,12 @@ void CLanServer::WorkerThread (void)
 			{
 				pSession->RecvQ.MoveWritePos (Transferred);
 
-
-
-
 				//패킷 처리.
 				while ( 1 )
 				{
 					short Header;
-					int Size = pSession->RecvQ.GetUseSize ();
 
+					int Size = pSession->RecvQ.GetUseSize ();
 
 					if ( Size < sizeof (Header) )
 					{
@@ -329,6 +332,7 @@ void CLanServer::WorkerThread (void)
 					//헤더가 맞지 않는다. shutdown걸고 빠짐.
 					if ( Header != 8 )
 					{
+						Log->Log (L"Network", LOG_DEBUG, L"Session %lld, Header %d", pSession->SessionID,Header);
 						shutdown (pSession->sock, SD_BOTH);
 						break;
 					}
@@ -341,27 +345,31 @@ void CLanServer::WorkerThread (void)
 
 					pSession->RecvQ.RemoveData (sizeof (Header));
 
-					
+					Packet *Pack = new Packet;
 
-					Packet Pack;
-					pSession->RecvQ.Get (Pack.GetBufferPtr(),Header);
+					pSession->RecvQ.Get (Pack->GetBufferPtr(),Header);
 
-					Pack.MoveWritePos (Header);
+					Pack->MoveWritePos (Header);
 
-					OnRecv (pSession->SessionID, &Pack);
+					OnRecv (pSession->SessionID, Pack);
 
+					delete Pack;
 
 					InterlockedIncrement (( volatile LONG * )&_RecvPacketTPS);
 				}
-			
-					PostRecv (pSession);
+
+				PostRecv (pSession);
 
 			}
 			//Send일 경우
 			else if ( pOver == &pSession->SendOver )
 			{
-
+				pSession->SendQ.Lock ();
+				
 				pSession->SendQ.RemoveData (Transferred);
+				
+				pSession->SendQ.Free ();
+
 
 				pSession->SendFlag = false;
 
@@ -372,19 +380,11 @@ void CLanServer::WorkerThread (void)
 					PostSend (pSession);
 				}
 
+				
 				InterlockedIncrement (( volatile LONG * )&_SendPacketTPS);
 			}
 
-			if ( 0 == InterlockedDecrement64 (( volatile LONG64 * )& pSession->IOCount) )
-			{
-				SessionRelease (pSession);
-			}
-			//세션카운터가 0이하면 잘못만들은것이므로 크래쉬 일으켜서 확인.
-			else if ( pSession->IOCount < 0 )
-			{
-				int* a = ( int* )1;
-				int b = *a;
-			}
+			IODecrement (pSession);
 		}
 
 	}
@@ -500,17 +500,7 @@ void CLanServer::PostRecv (Session * p)
 
 		shutdown (p->sock, SD_BOTH);
 		//SessionKill (p);
-
-		if ( 0 == InterlockedDecrement64 (( volatile LONG64 * )& p->IOCount) )
-		{
-			SessionRelease (p);
-		}
-		//세션카운터가 0이하면 잘못만들은것이므로 크래쉬 일으켜서 확인.
-		else if ( p->IOCount < 0 )
-		{
-			int* a = ( int* )1;
-			int b = *a;
-		}
+		IODecrement (p);
 
 		return;
 	}
@@ -528,7 +518,7 @@ void CLanServer::PostRecv (Session * p)
 		Cnt++;
 	}
 
-	memset (&p->RecvOver, 0, sizeof (OVERLAPPED));
+	memset (&p->RecvOver, 0, sizeof (p->RecvOver));
 
 	retval = WSARecv (p->sock, buf, Cnt, &RecvByte, &dwFlag, &p->RecvOver, NULL);
 
@@ -548,20 +538,11 @@ void CLanServer::PostRecv (Session * p)
 			}
 			else
 			{
-				Log->Log (L"Network", LOG_SYSTEM, L"SessionID = %lld, ErrorCode = %ld", p->SessionID, Errcode);
+				Log->Log (L"Network", LOG_SYSTEM, L"SessionID = %lld, ErrorCode = %ld PostRecv", p->SessionID, Errcode);
 			}
 
 			shutdown (p->sock, SD_BOTH);
-			if ( 0 == InterlockedDecrement64 (( volatile LONG64 * )& p->IOCount) )
-			{
-				SessionRelease (p);
-			}
-			//세션카운터가 0이하면 잘못만들은것이므로 크래쉬 일으켜서 확인.
-			else if ( p->IOCount < 0 )
-			{
-				int* a = ( int* )1;
-				int b = *a;
-			}
+			IODecrement (p);
 		}
 	}
 
@@ -579,18 +560,7 @@ void CLanServer::PostSend (Session * p)
 
 	if ( InterlockedCompareExchange (( volatile long * )&p->SendFlag, TRUE, FALSE) == TRUE )
 	{
-
-		if ( 0 == InterlockedDecrement64 (( volatile LONG64 * )& p->IOCount) )
-		{
-			SessionRelease (p);
-		}
-		//세션카운터가 0이하면 잘못만들은것이므로 크래쉬 일으켜서 확인.
-		else if ( p->IOCount < 0 )
-		{
-			int* a = ( int* )1;
-			int b = *a;
-		}
-
+		IODecrement (p);
 		return;
 	}
 
@@ -627,20 +597,11 @@ void CLanServer::PostSend (Session * p)
 			}
 			else
 			{
-				Log->Log (L"Network", LOG_SYSTEM, L"SessionID = %lld, ErrorCode = %ld", p->SessionID, Errcode);
+				Log->Log (L"Network", LOG_SYSTEM, L"SessionID = %lld, ErrorCode = %ld PostSend", p->SessionID, Errcode);
 			}
 
 			shutdown (p->sock, SD_BOTH);
-			if ( 0 == InterlockedDecrement64 (( volatile LONG64 * )& p->IOCount) )
-			{
-				SessionRelease (p);
-			}
-			//세션카운터가 0이하면 잘못만들은것이므로 크래쉬 일으켜서 확인.
-			else if ( p->IOCount < 0 )
-			{
-				int* a = ( int* )1;
-				int b = *a;
-			}
+			IODecrement (p);
 		}
 	}
 	return;

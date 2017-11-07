@@ -79,6 +79,7 @@ public :
 
 	void SendPacket (UINT64 SessionID, Packet *pack);
 	void Disconnect (UINT64 SessionID);
+	void IODecrement (Session *p);
 
 	bool Start (WCHAR *ServerIP, int PORT, int Session_Max, int WorkerThread_Num);
 	bool Stop (void);

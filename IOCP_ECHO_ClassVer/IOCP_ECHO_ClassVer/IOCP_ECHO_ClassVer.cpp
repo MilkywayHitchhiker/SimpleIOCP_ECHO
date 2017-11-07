@@ -20,13 +20,14 @@ public:
 		INT64 Num;
 
 		*p >> Num;
+		
+		Packet *Pack = new Packet;
 
-		Packet Pack;
+		*Pack << Num;
 
-		Pack << Num;
+		SendPacket (SessionID, Pack);
 
-		SendPacket (SessionID, &Pack);
-
+		delete Pack;
 
 		return;
 	}
