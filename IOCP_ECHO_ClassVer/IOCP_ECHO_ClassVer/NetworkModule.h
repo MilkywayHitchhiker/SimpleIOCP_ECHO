@@ -25,7 +25,7 @@ protected:
 
 		INT64 IOCount = 0;
 		
-		INT SendFlag = false;
+		long SendFlag = FALSE;
 		CRingbuffer SendQ;
 		OVERLAPPED SendOver;
 		

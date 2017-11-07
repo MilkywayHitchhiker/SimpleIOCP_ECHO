@@ -52,7 +52,7 @@ ECHO Network;
 int main()
 {
 	wprintf (L"MainThread Start\n");
-	Network.Start (L"127.0.0.1", 6000, 200, 3);
+	Network.Start (L"192.168.10.22", 6000, 200, 3);
 
 
 	UINT AcceptTotal = 0;
@@ -85,11 +85,13 @@ int main()
 
 			StartTime = EndTime;
 		}
-/*
+
 		if ( GetAsyncKeyState ('E') & 0x8001 )
 		{
 			Network.Stop ();
+			break;
 		}
+		/*
 		else if ( GetAsyncKeyState ('S') & 0x8001 )
 		{
 			Network.Start (L"127.0.0.1", 6000, 200, 3);
@@ -97,9 +99,10 @@ int main()
 		else if ( GetAsyncKeyState ('Q') & 0x8001 )
 		{
 			break;
-		}*/
+		}
+		*/
 
-		Sleep (1);
+		Sleep (100);
 	}
 
 

@@ -83,24 +83,22 @@ bool CLanServer::Stop (void)
 		DeleteCriticalSection (&Session_Array[Cnt].SessionCS);
 	}
 
+
+
 	//PQCS로 워커 스레드 끄기.
 	WaitForSingleObject (&Thread[0], INFINITE);
+
 	PostQueuedCompletionStatus (_IOCP, 0, 0, 0);
-
-	for ( int Cnt = 0; Cnt < _WorkerThread_Num + 1; Cnt++ )
-	{
-		CloseHandle (Thread[Cnt+1]);
-	}
-	CloseHandle (_IOCP);
-
-	if ( WSACleanup () )
-	{
-		Log->Log (L"Network", LOG_DEBUG, L"\n WSACleanUp_Error %d\n", GetLastError ());
-	}
 
 	//스레드 종료 대기.
 	WaitForMultipleObjects (_WorkerThread_Num + 1, Thread, TRUE, INFINITE);
 
+/*
+	if ( WSACleanup () )
+	{
+		Log->Log (L"Network", LOG_DEBUG, L" WSACleanUp_Error %d", GetLastError ());
+	}
+	*/
 	wprintf (L"\nNetworkModule End \n");
 
 	return true;
@@ -125,28 +123,33 @@ void CLanServer::SendPacket (UINT64 SessionID, Packet *pack)
 			break;
 		}
 
-		p->SendQ.Lock ();
 
 		//Send버퍼 초과로 해당 세션을 강제로 끊어줘야 된다.
-		if ( p->SendQ.GetFreeSize () < pack->GetDataSize () )
+		p->SendQ.Lock ();
+		if ( p->SendQ.GetFreeSize () < pack->GetDataSize () + 2 )
 		{
-			p->SendQ.Free ();
-			Log->Log (L"Network", LOG_ERROR, L"SendBuffer Overflow SessionID = %lld ", p->SessionID);
+			short Size = pack->GetDataSize ();
+			INT64 NUM;
+			pack->GetData (( char* )&NUM, sizeof (INT64));
+
+			Log->Log (L"Network", LOG_ERROR, L"SendBuffer Overflow SessionID = %lld, Header = %d, Packet = %lld", p->SessionID,Size,NUM);
+
 			shutdown (p->sock, SD_BOTH);
 			//SessionKill (p);
 			break;
 		}
 
+
 		short header = pack->GetDataSize ();
 
 		p->SendQ.Put (( char * )&header, sizeof (header));
 		p->SendQ.Put (pack->GetBufferPtr (), pack->GetDataSize ());
-		p->SendQ.Free ();
-
-		PostSend (p);
 
 	} while ( 0 );
 
+	p->SendQ.Free ();
+
+	PostSend (p);
 
 	LeaveCriticalSection (&p->SessionCS);
 
@@ -223,7 +226,7 @@ void CLanServer::AcceptThread (void)
 		p->sock = hClientSock;
 		p->SessionID = InterlockedIncrement64 (( volatile LONG64 * )&_SessionID_Count);
 		p->UseFlag = true;
-
+		p->SendFlag = false;
 
 		InterlockedIncrement (( volatile long * )&_Use_Session_Cnt);
 
@@ -232,7 +235,7 @@ void CLanServer::AcceptThread (void)
 
 
 		//새로운 접속자 알림.
-		WCHAR IP[24];
+		WCHAR IP[36];
 		WSAAddressToString (( SOCKADDR * )&ClientAddr, sizeof (ClientAddr), NULL, IP, (DWORD *)&addrLen);
 		if ( OnClientJoin (p->SessionID, IP, ntohs (ClientAddr.sin_port)) == false )
 		{
@@ -297,7 +300,7 @@ void CLanServer::WorkerThread (void)
 			}
 			else
 			{
-				// Log->Log (L"Network", LOG_DEBUG, L"Session %lld, Transferred 0",pSession->SessionID);
+			//	 Log->Log (L"Network", LOG_DEBUG, L"Session %lld, Transferred 0",pSession->SessionID);
 				//Transferred가 0 일 경우 해당 세션이 파괴된것이므로 종료절차를 밟아나감.
 				shutdown (pSession->sock, SD_BOTH);
 
@@ -351,6 +354,7 @@ void CLanServer::WorkerThread (void)
 
 					Pack->MoveWritePos (Header);
 
+
 					OnRecv (pSession->SessionID, Pack);
 
 					delete Pack;
@@ -364,22 +368,21 @@ void CLanServer::WorkerThread (void)
 			//Send일 경우
 			else if ( pOver == &pSession->SendOver )
 			{
-				pSession->SendQ.Lock ();
-				
-				pSession->SendQ.RemoveData (Transferred);
-				
-				pSession->SendQ.Free ();
-
-
-				pSession->SendFlag = false;
 
 				OnSend (pSession->SessionID, Transferred);
+
+				pSession->SendQ.Lock ();
+				pSession->SendQ.RemoveData (Transferred);
+				pSession->SendQ.Free ();
+
+				
+				pSession->SendFlag = FALSE;
+
 
 				if ( pSession->SendQ.GetUseSize () > 0 )
 				{
 					PostSend (pSession);
 				}
-
 				
 				InterlockedIncrement (( volatile LONG * )&_SendPacketTPS);
 			}
@@ -565,8 +568,19 @@ void CLanServer::PostSend (Session * p)
 	}
 
 
+	if ( p->SendQ.GetUseSize () <= 0 )
+	{
+		Log->Log (L"Network", LOG_DEBUG, L"SessionID = %lld, 0 Buffer PostSend", p->SessionID);
+		
+		IODecrement (p);
+		p->SendFlag = FALSE;
+		return;
+	}
+
 	//WSASend 셋팅 및 등록부
 	WSABUF buf[2];
+
+	p->SendQ.Lock ();
 
 	buf[0].buf = p->SendQ.GetReadBufferPtr ();
 	buf[0].len = p->SendQ.GetNotBrokenGetSize ();
@@ -577,6 +591,7 @@ void CLanServer::PostSend (Session * p)
 		buf[1].len = p->SendQ.GetUseSize () - p->SendQ.GetNotBrokenGetSize ();
 		Cnt++;
 	}
+	p->SendQ.Free ();
 
 	memset (&p->SendOver, 0, sizeof (p->SendOver));
 

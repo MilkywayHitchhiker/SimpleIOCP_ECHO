@@ -302,7 +302,7 @@ int Packet::GetData(char *chpDest, int iSize)
 	if ( iSize > _iDataSize )
 		return 0;
 
-	memcpy(chpDest, ReadPos, iSize);
+	memcpy_s(chpDest, iSize, ReadPos, iSize);
 	ReadPos += iSize;
 
 	_iDataSize -= iSize;
@@ -319,7 +319,7 @@ int Packet::PutData(char *chpSrc, int iSrcSize)
 	if ( WritePos + iSrcSize > DataFieldEnd )
 		return 0;
 
-	memcpy(WritePos, chpSrc, iSrcSize);
+	memcpy_s(WritePos, iSrcSize , chpSrc, iSrcSize);
 	WritePos += iSrcSize;
 
 	_iDataSize += iSrcSize;
