@@ -5,11 +5,11 @@
 #include <WS2tcpip.h>
 #pragma comment(lib,"ws2_32.lib")
 
-#include<process.h>
+#include <process.h>
 
-#include"Packet.h"
-#include"RingBuffer.h"
-
+#include "Packet.h"
+#include "RingBuffer.h"
+#include "CrashDump.h"
 
 
 class CLanServer
@@ -17,8 +17,6 @@ class CLanServer
 protected:
 	struct Session
 	{
-		CRITICAL_SECTION SessionCS;
-
 		bool UseFlag = false;
 		SOCKET sock;
 		UINT64 SessionID;
@@ -57,8 +55,9 @@ protected:
 	//파괴자
 	~CLanServer (void);
 
-
+	//실제 AcceptThread
 	void AcceptThread (void);
+	//실제 WorkerThread
 	void WorkerThread (void);
 
 	bool InitializeNetwork (WCHAR *IP,int PORT);
@@ -70,6 +69,7 @@ protected:
 
 	void SessionRelease (Session *p);
 
+	void IODecrement (Session *p);
 
 public :
 	virtual void OnRecv (UINT64 SessionID, Packet *p) = 0;
@@ -79,10 +79,11 @@ public :
 
 	void SendPacket (UINT64 SessionID, Packet *pack);
 	void Disconnect (UINT64 SessionID);
-	void IODecrement (Session *p);
 
 	bool Start (WCHAR *ServerIP, int PORT, int Session_Max, int WorkerThread_Num);
 	bool Stop (void);
+
+
 
 	UINT RecvTPS (bool Reset)
 	{

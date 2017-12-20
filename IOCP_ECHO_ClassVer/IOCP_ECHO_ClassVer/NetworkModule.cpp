@@ -20,6 +20,10 @@ CLanServer::~CLanServer (void)
 
 bool CLanServer::Start (WCHAR * ServerIP, int PORT, int Session_Max, int WorkerThread_Num)
 {
+	if ( bServerOn == true )
+	{
+		return false;
+	}
 
 	Log->SetLogDirectory (L"../LOG_FILE");
 	wprintf (L"\n NetworkModule Start \n");
@@ -29,16 +33,9 @@ bool CLanServer::Start (WCHAR * ServerIP, int PORT, int Session_Max, int WorkerT
 		return false;
 	}
 
-
-
-	//세션 배열 생성 및 크리티컬 섹션 초기화
+	//세션 배열 생성
 	_Session_Max = Session_Max;
 	Session_Array = new Session[Session_Max];
-
-	for ( int Cnt = 0; Cnt < Session_Max; Cnt++ )
-	{
-		InitializeCriticalSection (&Session_Array[Cnt].SessionCS);
-	}
 
 
 
@@ -55,7 +52,7 @@ bool CLanServer::Start (WCHAR * ServerIP, int PORT, int Session_Max, int WorkerT
 		Thread[Cnt + 1] = ( HANDLE )_beginthreadex (NULL, 0, WorkerThread, (void *)this, NULL, NULL);
 	}
 
-
+	Log->Log (L"Network", LOG_SYSTEM, L" NetworkStart");
 	bServerOn = true;
 	return true;
 }
@@ -67,9 +64,8 @@ bool CLanServer::Stop (void)
 		return false;
 	}
 
-	//세션정리. 스레드 정리. 
-
-	//키입력 종료처리
+	
+	//AcceptThread 종료
 	closesocket (_ListenSock);
 
 	//세션 정리
@@ -79,8 +75,6 @@ bool CLanServer::Stop (void)
 		{
 			shutdown (Session_Array[Cnt].sock, SD_BOTH);
 		}
-
-		DeleteCriticalSection (&Session_Array[Cnt].SessionCS);
 	}
 
 
@@ -99,8 +93,11 @@ bool CLanServer::Stop (void)
 		Log->Log (L"Network", LOG_DEBUG, L" WSACleanUp_Error %d", GetLastError ());
 	}
 	*/
-	wprintf (L"\nNetworkModule End \n");
 
+
+	wprintf (L"\nNetworkModule End \n");
+	Log->Log (L"Network", LOG_SYSTEM, L" NetworkStop");
+	bServerOn = false;
 	return true;
 }
 
@@ -112,8 +109,6 @@ void CLanServer::SendPacket (UINT64 SessionID, Packet *pack)
 	{
 		return;
 	}
-
-	EnterCriticalSection (&p->SessionCS);
 
 	do
 	{
@@ -135,7 +130,6 @@ void CLanServer::SendPacket (UINT64 SessionID, Packet *pack)
 			Log->Log (L"Network", LOG_ERROR, L"SendBuffer Overflow SessionID = %lld, Header = %d, Packet = %lld", p->SessionID,Size,NUM);
 
 			shutdown (p->sock, SD_BOTH);
-			//SessionKill (p);
 			break;
 		}
 
@@ -151,8 +145,6 @@ void CLanServer::SendPacket (UINT64 SessionID, Packet *pack)
 
 	PostSend (p);
 
-	LeaveCriticalSection (&p->SessionCS);
-
 	return;
 }
 
@@ -160,26 +152,22 @@ void CLanServer::Disconnect (UINT64 SessionID)
 {
 	Session *p = FindSession (false, SessionID);
 
-	EnterCriticalSection (&p->SessionCS);
-
 	shutdown (p->sock, SD_BOTH);
-
-	LeaveCriticalSection (&p->SessionCS);
 
 	return;
 }
 
 void CLanServer::IODecrement (Session * p)
 {
-	if ( 0 == InterlockedDecrement64 (( volatile LONG64 * )& p->IOCount) )
+	int Num = InterlockedDecrement64 (( volatile LONG64 * )& p->IOCount);
+	if ( Num == 0 )
 	{
 		SessionRelease (p);
 	}
 	//세션카운터가 0이하면 잘못만들은것이므로 크래쉬 일으켜서 확인.
-	else if ( p->IOCount < 0 )
+	else if ( Num < 0 )
 	{
-		int* a = ( int* )1;
-		int b = *a;
+		CCrashDump::Crash ();
 	}
 }
 
@@ -260,7 +248,7 @@ unsigned int CLanServer::WorkerThread (LPVOID pParam)
 	p->WorkerThread ();
 
 
-	wprintf (L"\n\n\nWorker Thread End\n\n\n");
+	wprintf (L"\nWorker Thread End\n");
 	return 0;
 }
 
@@ -445,11 +433,7 @@ bool CLanServer::InitializeNetwork (WCHAR *IP, int PORT)
 		return false;
 	}
 
-	/*
-	//노딜레이 옵션 여부
-	int option = FALSE;
-	setsockopt (_ListenSock, IPPROTO_TCP, TCP_NODELAY, ( const char* )&option, sizeof (option));
-	*/
+
 	return true;
 
 }
@@ -502,7 +486,6 @@ void CLanServer::PostRecv (Session * p)
 		Log->Log (L"Network", LOG_WARNING, L"SessionID = %lld, WSABuffer 0 NotRecv", p->SessionID);
 
 		shutdown (p->sock, SD_BOTH);
-		//SessionKill (p);
 		IODecrement (p);
 
 		return;
@@ -629,16 +612,12 @@ void CLanServer::SessionRelease (Session * p)
 {
 	OnClientLeave (p->SessionID);
 
-	EnterCriticalSection (&p->SessionCS);
-
 	closesocket (p->sock);
 
 	p->RecvQ.ClearBuffer ();
 	p->SendQ.ClearBuffer ();
 
 	p->UseFlag = false;
-
-	LeaveCriticalSection (&p->SessionCS);
 
 	InterlockedDecrement (( volatile long * )&_Use_Session_Cnt);
 

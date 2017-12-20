@@ -145,6 +145,7 @@
     <Text Include="ReadMe.txt" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="CrashDump.h" />
     <ClInclude Include="NetworkModule.h" />
     <ClInclude Include="Packet.h" />
     <ClInclude Include="RingBuffer.h" />
@@ -153,6 +154,7 @@
     <ClInclude Include="targetver.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="APIHook.cpp" />
     <ClCompile Include="IOCP_ECHO_ClassVer.cpp" />
     <ClCompile Include="NetworkModule.cpp" />
     <ClCompile Include="Packet.cpp" />

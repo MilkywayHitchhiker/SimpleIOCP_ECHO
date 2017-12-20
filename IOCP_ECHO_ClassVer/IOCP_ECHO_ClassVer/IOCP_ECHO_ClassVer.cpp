@@ -2,7 +2,10 @@
 //
 
 #include "stdafx.h"
-#include"NetworkModule.h"
+#include "NetworkModule.h"
+
+
+CCrashDump Dump;
 
 class ECHO:public CLanServer
 {
@@ -52,7 +55,7 @@ ECHO Network;
 int main()
 {
 	wprintf (L"MainThread Start\n");
-	Network.Start (L"192.168.10.22", 6000, 200, 3);
+	Network.Start (L"127.0.0.1", 6000, 200, 3);
 
 
 	UINT AcceptTotal = 0;
@@ -102,7 +105,7 @@ int main()
 		}
 		*/
 
-		Sleep (100);
+		Sleep (200);
 	}
 
 
