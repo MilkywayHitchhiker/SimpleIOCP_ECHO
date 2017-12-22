@@ -65,8 +65,9 @@ namespace hiker
 		//------------------------------------------------------
 		void SetLogDirectory (WCHAR *szDirectory)
 		{
-			_wmkdir (szDirectory);
 			wsprintf (_SaveDirectory, L"%s\\", szDirectory);
+
+			_wmkdir (_SaveDirectory);
 		}
 
 		//------------------------------------------------------

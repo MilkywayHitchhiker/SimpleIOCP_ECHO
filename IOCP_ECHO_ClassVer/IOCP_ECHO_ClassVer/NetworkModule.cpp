@@ -4,7 +4,6 @@
 
 hiker::CSystemLog *Log = hiker::CSystemLog::GetInstance (LOG_DEBUG);
 
-
 CLanServer::CLanServer (void)
 {
 	bServerOn = false;
@@ -68,6 +67,9 @@ bool CLanServer::Stop (void)
 	//AcceptThread 종료
 	closesocket (_ListenSock);
 
+	//AcceptThread 종료대기.
+	WaitForSingleObject (&Thread[0], INFINITE);
+
 	//세션 정리
 	for ( int Cnt = 0; Cnt < _Session_Max; Cnt++ )
 	{
@@ -77,22 +79,18 @@ bool CLanServer::Stop (void)
 		}
 	}
 
-
-
-	//PQCS로 워커 스레드 끄기.
-	WaitForSingleObject (&Thread[0], INFINITE);
-
+	//PQCS로 워커스레드 종료.꺼지는 워커스레드에서 다시 PQCS로 신호보냄.
 	PostQueuedCompletionStatus (_IOCP, 0, 0, 0);
 
 	//스레드 종료 대기.
 	WaitForMultipleObjects (_WorkerThread_Num + 1, Thread, TRUE, INFINITE);
 
-/*
+	
 	if ( WSACleanup () )
 	{
 		Log->Log (L"Network", LOG_DEBUG, L" WSACleanUp_Error %d", GetLastError ());
 	}
-	*/
+	
 
 
 	wprintf (L"\nNetworkModule End \n");
@@ -123,21 +121,18 @@ void CLanServer::SendPacket (UINT64 SessionID, Packet *pack)
 		p->SendQ.Lock ();
 		if ( p->SendQ.GetFreeSize () < pack->GetDataSize () + 2 )
 		{
-			short Size = pack->GetDataSize ();
+			short Size;
 			INT64 NUM;
+			pack->GetData (( char* )&Size, sizeof (INT));
 			pack->GetData (( char* )&NUM, sizeof (INT64));
-
 			Log->Log (L"Network", LOG_ERROR, L"SendBuffer Overflow SessionID = %lld, Header = %d, Packet = %lld", p->SessionID,Size,NUM);
 
 			shutdown (p->sock, SD_BOTH);
 			break;
 		}
 
-
-		short header = pack->GetDataSize ();
-
-		p->SendQ.Put (( char * )&header, sizeof (header));
-		p->SendQ.Put (pack->GetBufferPtr (), pack->GetDataSize ());
+		pack->AddRefCnt ();
+		p->SendQ.Put ((char *)pack, 8);
 
 	} while ( 0 );
 
@@ -336,7 +331,7 @@ void CLanServer::WorkerThread (void)
 
 					pSession->RecvQ.RemoveData (sizeof (Header));
 
-					Packet *Pack = new Packet;
+					Packet *Pack = Packet::Alloc();
 
 					pSession->RecvQ.Get (Pack->GetBufferPtr(),Header);
 
@@ -345,7 +340,7 @@ void CLanServer::WorkerThread (void)
 
 					OnRecv (pSession->SessionID, Pack);
 
-					delete Pack;
+					Packet::Free (Pack);
 
 					InterlockedIncrement (( volatile LONG * )&_RecvPacketTPS);
 				}
@@ -359,18 +354,23 @@ void CLanServer::WorkerThread (void)
 
 				OnSend (pSession->SessionID, Transferred);
 
-				pSession->SendQ.Lock ();
-				pSession->SendQ.RemoveData (Transferred);
-				pSession->SendQ.Free ();
-
-				
+				Packet *p;
+				int QSize = pSession->SendPacketlist.GetUseSize () / 8;
+				for ( int Cnt = 0; Cnt < QSize; Cnt++ )
+				{
+					pSession->SendPacketlist.Get (( char * )p, 8);
+					Packet::Free (p);
+				}
+								
 				pSession->SendFlag = FALSE;
 
-
+				pSession->SendQ.Lock ();
 				if ( pSession->SendQ.GetUseSize () > 0 )
 				{
 					PostSend (pSession);
 				}
+				pSession->SendQ.Free ();
+
 				
 				InterlockedIncrement (( volatile LONG * )&_SendPacketTPS);
 			}
@@ -551,27 +551,30 @@ void CLanServer::PostSend (Session * p)
 	}
 
 
-	if ( p->SendQ.GetUseSize () <= 0 )
+	//WSASend 셋팅 및 등록부
+	WSABUF buf[100];
+
+	p->SendQ.Lock ();
+	int QSize = p->SendQ.GetUseSize ();
+	if ( QSize <= 0 )
 	{
 		Log->Log (L"Network", LOG_DEBUG, L"SessionID = %lld, 0 Buffer PostSend", p->SessionID);
-		
+
 		IODecrement (p);
 		p->SendFlag = FALSE;
+		p->SendQ.Free ();
 		return;
 	}
 
-	//WSASend 셋팅 및 등록부
-	WSABUF buf[2];
-
-	p->SendQ.Lock ();
-
-	buf[0].buf = p->SendQ.GetReadBufferPtr ();
-	buf[0].len = p->SendQ.GetNotBrokenGetSize ();
-	Cnt++;
-	if ( p->SendQ.GetUseSize () > p->SendQ.GetNotBrokenGetSize () )
+	QSize = QSize / 8;
+	Packet *buff;
+	for ( int wsaCnt = 0; wsaCnt < QSize; wsaCnt++ )
 	{
-		buf[1].buf = p->SendQ.GetBufferPtr ();
-		buf[1].len = p->SendQ.GetUseSize () - p->SendQ.GetNotBrokenGetSize ();
+		buff = ( Packet * )buf[wsaCnt].buf;
+		p->SendQ.Get (buf[wsaCnt].buf, 8);
+		buf[wsaCnt].len = buff->GetDataSize();
+		p->SendPacketlist.Put (buf[wsaCnt].buf, 8);
+
 		Cnt++;
 	}
 	p->SendQ.Free ();

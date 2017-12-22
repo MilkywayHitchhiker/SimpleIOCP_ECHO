@@ -7,10 +7,9 @@
 
 #include <process.h>
 
-#include "Packet.h"
+#include "PacketPool.h"
 #include "RingBuffer.h"
 #include "CrashDump.h"
-
 
 class CLanServer
 {
@@ -26,6 +25,8 @@ protected:
 		long SendFlag = FALSE;
 		CRingbuffer SendQ;
 		OVERLAPPED SendOver;
+
+		CRingbuffer SendPacketlist;
 		
 		CRingbuffer RecvQ;
 		OVERLAPPED RecvOver;

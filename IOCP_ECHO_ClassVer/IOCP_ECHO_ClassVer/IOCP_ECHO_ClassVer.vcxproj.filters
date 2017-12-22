@@ -33,30 +33,33 @@
     <ClInclude Include="RingBuffer.h">
       <Filter>소스 파일</Filter>
     </ClInclude>
-    <ClInclude Include="Packet.h">
-      <Filter>소스 파일</Filter>
-    </ClInclude>
     <ClInclude Include="CrashDump.h">
       <Filter>소스 파일</Filter>
     </ClInclude>
+    <ClInclude Include="PacketPool.h">
+      <Filter>소스 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="MemoryPool.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="stdafx.cpp">
-      <Filter>소스 파일</Filter>
-    </ClCompile>
     <ClCompile Include="IOCP_ECHO_ClassVer.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
     <ClCompile Include="NetworkModule.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
-    <ClCompile Include="Packet.cpp">
-      <Filter>소스 파일</Filter>
-    </ClCompile>
     <ClCompile Include="RingBuffer.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
     <ClCompile Include="APIHook.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="stdafx.cpp">
+      <Filter>헤더 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="PacketPool.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
   </ItemGroup>
