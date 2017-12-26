@@ -37,6 +37,14 @@ bool CLanServer::Start (WCHAR * ServerIP, int PORT, int Session_Max, int WorkerT
 	_Session_Max = Session_Max;
 	Session_Array = new Session[Session_Max];
 
+	//비어있는 세션배열 번호 전부 저장.
+	for ( int Cnt = 0; Cnt < Session_Max; Cnt++ )
+	{
+		if ( Session_Array[Cnt].UseFlag == false )
+		{
+			emptySession.push (Cnt);
+		}
+	}
 
 
 	//IOCP 포트 생성 및 스레드 생성.
@@ -87,14 +95,6 @@ bool CLanServer::Stop (void)
 	//스레드 종료 대기.
 	WaitForMultipleObjects (_WorkerThread_Num + 1, Thread, TRUE, INFINITE);
 
-/*
-	if ( WSACleanup () )
-	{
-		Log->Log (L"Network", LOG_DEBUG, L" WSACleanUp_Error %d", GetLastError ());
-	}
-	*/
-
-
 	wprintf (L"\nNetworkModule End \n");
 	Log->Log (L"Network", LOG_SYSTEM, L" NetworkStop");
 	bServerOn = false;
@@ -104,7 +104,7 @@ bool CLanServer::Stop (void)
 void CLanServer::SendPacket (UINT64 SessionID, Packet *pack)
 {
 
-	Session *p = FindSession (false, SessionID);
+	Session *p = FindSession (SessionID);
 	if ( p == NULL )
 	{
 		return;
@@ -150,7 +150,7 @@ void CLanServer::SendPacket (UINT64 SessionID, Packet *pack)
 
 void CLanServer::Disconnect (UINT64 SessionID)
 {
-	Session *p = FindSession (false, SessionID);
+	Session *p = FindSession (SessionID);
 
 	shutdown (p->sock, SD_BOTH);
 
@@ -185,12 +185,15 @@ unsigned int CLanServer::AcceptThread (LPVOID pParam)
 }
 
 void CLanServer::AcceptThread (void)
-{
-
+{	
 	SOCKET hClientSock = 0;
 	SOCKADDR_IN ClientAddr;
 	Session *p;
 	int addrLen;
+
+
+
+
 
 	while ( 1 )
 	{
@@ -202,17 +205,23 @@ void CLanServer::AcceptThread (void)
 			break;
 		}
 
-		//Find Session;
-		p = FindSession (true);
-		if ( p == NULL )
+		//비어있는 세션찾기.
+		//비어있는 세션이 없다면 로그로 남기고 서버 종료.
+		emptySession.LOCK ();
+		if ( emptySession.empty () )
 		{
 			closesocket (hClientSock);
 			Log->Log (L"Network", LOG_SYSTEM, L"Session %d Use Full ", _Session_Max);
 			break;
 		}
+		int Cnt = emptySession.pop ();
+		emptySession.Free ();
+
+		p = &Session_Array[Cnt];
+		
 
 		p->sock = hClientSock;
-		p->SessionID = InterlockedIncrement64 (( volatile LONG64 * )&_SessionID_Count);
+		p->SessionID = CreateSessionID (Cnt, InterlockedIncrement64 (( volatile LONG64 * )&_SessionID_Count));
 		p->UseFlag = true;
 		p->SendFlag = false;
 
@@ -438,33 +447,16 @@ bool CLanServer::InitializeNetwork (WCHAR *IP, int PORT)
 
 }
 
-CLanServer::Session * CLanServer::FindSession (bool NewFlag, UINT64 SessionID)
+CLanServer::Session * CLanServer::FindSession (UINT64 SessionID)
 {
 	int Cnt;
-	if ( NewFlag == true )
-	{
-		for ( Cnt = 0; Cnt < _Session_Max; Cnt++ )
-		{
-			if ( Session_Array[Cnt].UseFlag == false )
-			{
-				break;
-			}
-		}
-	}
-	else
-	{
-		for ( Cnt = 0; Cnt < _Session_Max; Cnt++ )
-		{
-			if ( Session_Array[Cnt].UseFlag == true && Session_Array[Cnt].SessionID == SessionID )
-			{
-				break;
-			}
-		}
-	}
 
-	//세션이 다 찾거나 찾는 세션이 존재하지 않을시.
-	if ( Cnt >= _Session_Max )
+	Cnt = indexSessionID (SessionID);
+
+	//index로 찾은 해당 세션의 id가 내가 찾던 세션이 아닐 경우
+	if ( Session_Array[Cnt].UseFlag == false || Session_Array[Cnt].SessionID != SessionID )
 	{
+		Log->Log (L"Network", LOG_WARNING, L"SessionID not match search = %p, Array = %p",SessionID, Session_Array[Cnt].SessionID);
 		return NULL;
 	}
 
@@ -618,6 +610,10 @@ void CLanServer::SessionRelease (Session * p)
 	p->SendQ.ClearBuffer ();
 
 	p->UseFlag = false;
+
+	emptySession.LOCK ();
+	emptySession.push (indexSessionID (p->SessionID));
+	emptySession.Free ();
 
 	InterlockedDecrement (( volatile long * )&_Use_Session_Cnt);
 

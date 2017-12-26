@@ -10,11 +10,13 @@
 #include "Packet.h"
 #include "RingBuffer.h"
 #include "CrashDump.h"
+#include "Stack.h"
 
 
 class CLanServer
 {
 protected:
+
 	struct Session
 	{
 		bool UseFlag = false;
@@ -35,8 +37,9 @@ protected:
 	SOCKET _ListenSock;
 	int _Session_Max;
 	Session *Session_Array;
+	CStack<int> emptySession;
 
-	UINT64 _SessionID_Count = 0;
+	char _SessionID_Count[6];
 
 	UINT _RecvPacketTPS;
 	UINT _SendPacketTPS;
@@ -62,8 +65,15 @@ protected:
 
 	bool InitializeNetwork (WCHAR *IP,int PORT);
 
-	Session *FindSession (bool NewFlag, UINT64 SessionID = 0);
-
+	Session *FindSession (UINT64 SessionID);
+	UINT64 CreateSessionID (short index, UINT64 Unique)
+	{
+			return (index << 6) | (Unique);
+	}
+	short indexSessionID (UINT64 SessionID)
+	{
+		return SessionID >> 6;
+	}
 	void PostRecv (Session *p);
 	void PostSend (Session *p);
 
