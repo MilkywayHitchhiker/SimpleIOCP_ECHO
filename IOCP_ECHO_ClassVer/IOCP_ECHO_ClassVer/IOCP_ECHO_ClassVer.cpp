@@ -40,7 +40,15 @@ public:
 
 	virtual bool OnClientJoin (UINT64 SessionID, WCHAR *IP, int PORT)
 	{
-		//wprintf (L"SessionID = %lld,IP =%lls, PORT %d\n", SessionID, IP, PORT);
+		short Header = 8;
+		INT64 Data = 0x7fffffffffffffff;
+
+		Packet *Pack = Packet::Alloc ();
+		*Pack << Header;
+		*Pack << Data;
+
+		SendPacket (SessionID, Pack);
+
 		return true;
 	}
 	virtual void OnClientLeave (UINT64 SessionID)

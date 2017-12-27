@@ -123,7 +123,6 @@ void CLanServer::SendPacket (UINT64 SessionID, Packet *pack)
 		}
 
 		pack->AddRefCnt ();
-		Packet *paaa = pack;
 		p->SendQ.Lock ();
 		p->SendQ.Put ((char *)&pack, 8);
 		p->SendQ.Free ();
@@ -179,9 +178,6 @@ void CLanServer::AcceptThread (void)
 	int addrLen;
 
 
-
-
-
 	while ( 1 )
 	{
 		addrLen = sizeof (ClientAddr);
@@ -219,6 +215,9 @@ void CLanServer::AcceptThread (void)
 
 
 		//새로운 접속자 알림.
+		InterlockedIncrement64 (&p->IOCount);
+
+
 		WCHAR IP[36];
 		WSAAddressToString (( SOCKADDR * )&ClientAddr, sizeof (ClientAddr), NULL, IP, (DWORD *)&addrLen);
 		if ( OnClientJoin (p->SessionID, IP, ntohs (ClientAddr.sin_port)) == false )
@@ -227,11 +226,12 @@ void CLanServer::AcceptThread (void)
 			continue;
 		}
 
-
 		PostRecv (p);
 
 		InterlockedIncrement (( volatile long * )&_AcceptTPS);
 		InterlockedIncrement (( volatile long * )&_AcceptTotal);
+		
+		IODecrement (p);
 	}
 	return;
 }
@@ -284,7 +284,7 @@ void CLanServer::WorkerThread (void)
 			}
 			else
 			{
-			//	 Log->Log (L"Network", LOG_DEBUG, L"Session %lld, Transferred 0",pSession->SessionID);
+				 Log->Log (L"Network", LOG_DEBUG, L"Session %lld, Transferred 0",pSession->SessionID);
 				//Transferred가 0 일 경우 해당 세션이 파괴된것이므로 종료절차를 밟아나감.
 				shutdown (pSession->sock, SD_BOTH);
 
@@ -556,7 +556,7 @@ void CLanServer::PostSend (Session * p)
 	p->SendQ.Lock ();
 	while ( 1 )
 	{
-		if ( p->SendQ.GetUseSize () <= 0 )
+		if ( p->SendQ.GetUseSize () <= 0 || Cnt == SendbufMax-1)
 		{
 			break;
 		}
