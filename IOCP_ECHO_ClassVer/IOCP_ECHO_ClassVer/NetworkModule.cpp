@@ -284,8 +284,15 @@ void CLanServer::WorkerThread (void)
 			}
 			else
 			{
-				 Log->Log (L"Network", LOG_DEBUG, L"Session %lld, Transferred 0",pSession->SessionID);
-				//Transferred가 0 일 경우 해당 세션이 파괴된것이므로 종료절차를 밟아나감.
+				if ( pOver == &pSession->RecvOver )
+				{
+					Log->Log (L"Network", LOG_DEBUG, L"Session %lld, Transferred 0 RecvOver", pSession->SessionID);
+				}
+				else
+				{
+					Log->Log (L"Network", LOG_DEBUG, L"Session %lld, Transferred 0 SendOver", pSession->SessionID);
+				}
+					//Transferred가 0 일 경우 해당 세션이 파괴된것이므로 종료절차를 밟아나감.
 				shutdown (pSession->sock, SD_BOTH);
 
 				IODecrement (pSession);
