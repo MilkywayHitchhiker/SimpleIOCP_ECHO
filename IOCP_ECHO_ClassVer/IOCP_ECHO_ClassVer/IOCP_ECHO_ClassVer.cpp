@@ -4,7 +4,6 @@
 #include "stdafx.h"
 #include "NetworkModule.h"
 
-
 CCrashDump Dump;
 
 class ECHO:public CLanServer
@@ -21,16 +20,16 @@ public:
 	virtual void OnRecv (UINT64 SessionID, Packet *p)
 	{
 		INT64 Num;
-
+		short Header = sizeof(Num);
 		*p >> Num;
 		
-		Packet *Pack = new Packet;
-
+		Packet *Pack = Packet::Alloc();
+		Pack->PutData ((char *)&Header, sizeof (Header));
 		*Pack << Num;
 
 		SendPacket (SessionID, Pack);
 
-		delete Pack;
+		Packet::Free (Pack);
 
 		return;
 	}
@@ -63,7 +62,8 @@ int main()
 	UINT RecvTPS = 0;
 	UINT SendTPS = 0;
 	UINT ConnectSessionCnt = 0;
-
+	UINT MemoryPoolCnt = 0;
+	UINT MemoryPoolUse = 0;
 
 	DWORD StartTime = GetTickCount ();
 	DWORD EndTime;
@@ -77,13 +77,18 @@ int main()
 			wprintf (L"AcceptTPS = %d \n", AcceptTPS);
 			wprintf (L"Sec RecvTPS = %d \n", RecvTPS);
 			wprintf (L"Sec SendTPS = %d \n", SendTPS);
+			wprintf (L"MemoryPoolFull Cnt = %d \n", MemoryPoolCnt);
+			wprintf (L"MemoryPoolUse Cnt = %d \n", MemoryPoolCnt);
 			wprintf (L"Connect Session Cnt = %d \n", ConnectSessionCnt);
+
 			wprintf (L"==========================\n");
 
 			AcceptTotal = Network.AcceptTotal ();
 			AcceptTPS = Network.AcceptTPS (true);
 			RecvTPS = Network.RecvTPS (true);
 			SendTPS = Network.SendTPS (true);
+			MemoryPoolCnt = Packet::GetMemoryPoolFullCount ();
+			MemoryPoolUse = Packet::GetUseCount ();
 			ConnectSessionCnt = Network.Use_SessionCnt ();
 
 			StartTime = EndTime;

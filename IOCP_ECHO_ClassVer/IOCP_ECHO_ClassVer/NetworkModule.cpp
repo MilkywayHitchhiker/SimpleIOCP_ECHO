@@ -46,6 +46,8 @@ bool CLanServer::Start (WCHAR * ServerIP, int PORT, int Session_Max, int WorkerT
 		}
 	}
 
+	//패킷내장 메모리 풀 초기화 작업.
+	Packet::initializePacketPool ();
 
 	//IOCP 포트 생성 및 스레드 생성.
 	_WorkerThread_Num = WorkerThread_Num;
@@ -112,36 +114,21 @@ void CLanServer::SendPacket (UINT64 SessionID, Packet *pack)
 
 	do
 	{
-		//락을 걸고 들어오기 직전에 해당 세션이 삭제된 경우
-		if ( p->UseFlag == false || p->SessionID != SessionID )
-		{
-			break;
-		}
-
-
 		//Send버퍼 초과로 해당 세션을 강제로 끊어줘야 된다.
-		p->SendQ.Lock ();
-		if ( p->SendQ.GetFreeSize () < pack->GetDataSize () + 2 )
+		if ( p->SendQ.GetFreeSize () < 8 )
 		{
-			short Size = pack->GetDataSize ();
-			INT64 NUM;
-			pack->GetData (( char* )&NUM, sizeof (INT64));
-
-			Log->Log (L"Network", LOG_ERROR, L"SendBuffer Overflow SessionID = %lld, Header = %d, Packet = %lld", p->SessionID,Size,NUM);
-
+			Log->Log (L"Network", LOG_ERROR, L"SendBuffer Overflow SessionID = %lld, ", p->SessionID);
 			shutdown (p->sock, SD_BOTH);
 			break;
 		}
 
-
-		short header = pack->GetDataSize ();
-
-		p->SendQ.Put (( char * )&header, sizeof (header));
-		p->SendQ.Put (pack->GetBufferPtr (), pack->GetDataSize ());
-
+		pack->AddRefCnt ();
+		Packet *paaa = pack;
+		p->SendQ.Lock ();
+		p->SendQ.Put ((char *)&pack, 8);
+		p->SendQ.Free ();
 	} while ( 0 );
 
-	p->SendQ.Free ();
 
 	PostSend (p);
 
@@ -159,7 +146,7 @@ void CLanServer::Disconnect (UINT64 SessionID)
 
 void CLanServer::IODecrement (Session * p)
 {
-	int Num = InterlockedDecrement64 (( volatile LONG64 * )& p->IOCount);
+	int Num =(int) InterlockedDecrement64 (( volatile LONG64 * )& p->IOCount);
 	if ( Num == 0 )
 	{
 		SessionRelease (p);
@@ -332,7 +319,7 @@ void CLanServer::WorkerThread (void)
 					//헤더가 맞지 않는다. shutdown걸고 빠짐.
 					if ( Header != 8 )
 					{
-						Log->Log (L"Network", LOG_DEBUG, L"Session %lld, Header %d", pSession->SessionID,Header);
+						Log->Log (L"Network", LOG_DEBUG, L"SessionID 0x%p, Header %d", pSession->SessionID,Header);
 						shutdown (pSession->sock, SD_BOTH);
 						break;
 					}
@@ -345,7 +332,7 @@ void CLanServer::WorkerThread (void)
 
 					pSession->RecvQ.RemoveData (sizeof (Header));
 
-					Packet *Pack = new Packet;
+					Packet *Pack = Packet::Alloc ();
 
 					pSession->RecvQ.Get (Pack->GetBufferPtr(),Header);
 
@@ -354,7 +341,7 @@ void CLanServer::WorkerThread (void)
 
 					OnRecv (pSession->SessionID, Pack);
 
-					delete Pack;
+					Packet::Free(Pack);
 
 					InterlockedIncrement (( volatile LONG * )&_RecvPacketTPS);
 				}
@@ -368,9 +355,19 @@ void CLanServer::WorkerThread (void)
 
 				OnSend (pSession->SessionID, Transferred);
 
-				pSession->SendQ.Lock ();
-				pSession->SendQ.RemoveData (Transferred);
-				pSession->SendQ.Free ();
+				Packet *Pack;
+				pSession->SendPack.LOCK ();
+				while ( 1 )
+				{
+					if ( pSession->SendPack.empty() )
+					{
+						break;
+					}
+
+					Pack = pSession->SendPack.pop ();
+					Packet::Free (Pack);
+				}
+				pSession->SendPack.Free ();
 
 				
 				pSession->SendFlag = FALSE;
@@ -553,18 +550,25 @@ void CLanServer::PostSend (Session * p)
 	}
 
 	//WSASend 셋팅 및 등록부
-	WSABUF buf[2];
+	WSABUF buf[SendbufMax];
 
+	Packet *pack;
 	p->SendQ.Lock ();
-
-	buf[0].buf = p->SendQ.GetReadBufferPtr ();
-	buf[0].len = p->SendQ.GetNotBrokenGetSize ();
-	Cnt++;
-	if ( p->SendQ.GetUseSize () > p->SendQ.GetNotBrokenGetSize () )
+	while ( 1 )
 	{
-		buf[1].buf = p->SendQ.GetBufferPtr ();
-		buf[1].len = p->SendQ.GetUseSize () - p->SendQ.GetNotBrokenGetSize ();
+		if ( p->SendQ.GetUseSize () <= 0 )
+		{
+			break;
+		}
+
+		p->SendQ.Get ((char *)&pack, 8);
+
+		buf[Cnt].buf = (char *)pack->GetBufferPtr();
+		buf[Cnt].len = pack->GetDataSize ();
 		Cnt++;
+		
+		p->SendPack.push (pack);
+
 	}
 	p->SendQ.Free ();
 

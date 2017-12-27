@@ -1,7 +1,7 @@
 #include "stdafx.h"
 #include <windows.h>
-#include "Packet.h"
-
+#include "PacketPool.h"
+CMemoryPool<Packet> *Packet::PacketPool;
 
 Packet::Packet() : Buffer (NULL),DataFieldStart (NULL),DataFieldEnd (NULL),ReadPos (NULL),WritePos (NULL)
 {
@@ -79,24 +79,7 @@ void Packet::Initial(int iBufferSize)
 
 	_iDataSize = 0;
 
-	//크리티컬 섹션 초기화
-	InitializeCriticalSection (&cs);
 	
-	return;
-}
-
-
-
-//크리티컬 섹션 락
-void Packet::Lock (void)
-{
-	EnterCriticalSection (&cs);
-	return;
-}
-//크리티컬 섹션 락 해제
-void Packet::Free (void)
-{
-	LeaveCriticalSection (&cs);
 	return;
 }
 

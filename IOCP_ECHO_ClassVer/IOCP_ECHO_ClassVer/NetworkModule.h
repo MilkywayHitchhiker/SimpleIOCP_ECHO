@@ -7,7 +7,7 @@
 
 #include <process.h>
 
-#include "Packet.h"
+#include "PacketPool.h"
 #include "RingBuffer.h"
 #include "CrashDump.h"
 #include "Stack.h"
@@ -15,6 +15,7 @@
 
 class CLanServer
 {
+#define SendbufMax 100
 protected:
 
 	struct Session
@@ -28,9 +29,11 @@ protected:
 		long SendFlag = FALSE;
 		CRingbuffer SendQ;
 		OVERLAPPED SendOver;
-		
+		CStack<Packet *> SendPack;
+
 		CRingbuffer RecvQ;
 		OVERLAPPED RecvOver;
+		
 	};
 
 	HANDLE _IOCP;
@@ -72,7 +75,7 @@ protected:
 	}
 	short indexSessionID (UINT64 SessionID)
 	{
-		return SessionID >> 6;
+		return (short)(SessionID >> 6);
 	}
 	void PostRecv (Session *p);
 	void PostSend (Session *p);
