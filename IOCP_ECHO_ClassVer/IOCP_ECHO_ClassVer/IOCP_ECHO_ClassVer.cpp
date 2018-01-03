@@ -23,14 +23,13 @@ public:
 		short Header = sizeof(Num);
 		*p >> Num;
 		
-		Packet *Pack = Packet::Alloc();
-		Pack->PutData ((char *)&Header, sizeof (Header));
+		Packet *Pack = new Packet;
+		*Pack <<Header;
 		*Pack << Num;
 
 		SendPacket (SessionID, Pack);
 
-		Packet::Free (Pack);
-
+		Pack->Release ();
 		return;
 	}
 	virtual void OnSend (UINT64 SessionID, INT SendByte)
@@ -41,13 +40,16 @@ public:
 	virtual bool OnClientJoin (UINT64 SessionID, WCHAR *IP, int PORT)
 	{
 		short Header = 8;
-		INT64 Data = 0x7fffffffffffffff;
+		INT64 Data = 0x7FFFFFFFFFFFFFFF;
 
-		Packet *Pack = Packet::Alloc ();
+		Packet *Pack = new Packet;
 		*Pack << Header;
 		*Pack << Data;
 
 		SendPacket (SessionID, Pack);
+		
+
+		Pack->Release ();
 
 		return true;
 	}
@@ -95,8 +97,6 @@ int main()
 			AcceptTPS = Network.AcceptTPS (true);
 			RecvTPS = Network.RecvTPS (true);
 			SendTPS = Network.SendTPS (true);
-			MemoryPoolCnt = Packet::GetMemoryPoolFullCount ();
-			MemoryPoolUse = Packet::GetUseCount ();
 			ConnectSessionCnt = Network.Use_SessionCnt ();
 
 			StartTime = EndTime;

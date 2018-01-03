@@ -7,7 +7,7 @@
 
 #include <process.h>
 
-#include "PacketPool.h"
+#include "Packet.h"
 #include "RingBuffer.h"
 #include "CrashDump.h"
 #include "Stack.h"
@@ -71,11 +71,11 @@ protected:
 	Session *FindSession (UINT64 SessionID);
 	UINT64 CreateSessionID (short index, UINT64 Unique)
 	{
-			return (index << 6) | (Unique);
+			return ((UINT64)index << 48) | (Unique);
 	}
 	short indexSessionID (UINT64 SessionID)
 	{
-		return (short)(SessionID >> 6);
+		return (short)(SessionID >> 48);
 	}
 	void PostRecv (Session *p);
 	void PostSend (Session *p);

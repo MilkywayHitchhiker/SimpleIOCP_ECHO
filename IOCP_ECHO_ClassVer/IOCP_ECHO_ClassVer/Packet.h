@@ -1,13 +1,13 @@
 
 #pragma once
 #include <Windows.h>
-#include "MemoryPool.h"
+
 class Packet
 {
 public:
 	enum PACKET
 	{
-		BUFFER_DEFAULT			= 1024		// 패킷의 기본 버퍼 사이즈.
+		BUFFER_DEFAULT			= 10000		// 패킷의 기본 버퍼 사이즈.
 	};
 
 	// 생성자, 파괴자.
@@ -19,7 +19,11 @@ public:
 
 	// 패킷 초기화.
 	void	Initial(int iBufferSize = BUFFER_DEFAULT);
-	// 패킷  파괴.
+
+	//RefCnt를 1 증가시킴. 
+	void	AddRefCnt (void);
+
+	// RefCnt를 하나 차감시키고 REfCnt가 0이 되면 자기자신 delete하고 빠져나옴.
 	void	Release(void);
 
 
@@ -46,9 +50,8 @@ public:
 
 
 
-	//=================================================================================================
+
 	// 연산자 오퍼레이터.
-	//=================================================================================================
 	Packet	&operator = (Packet &SrcPacket);
 
 	//////////////////////////////////////////////////////////////////////////
@@ -124,81 +127,11 @@ protected:
 	//------------------------------------------------------------
 	int		_iDataSize;
 
-	
+	//------------------------------------------------------------
+	// 현재 Packet의 RefCnt
+	//------------------------------------------------------------
+	int iRefCnt;
 
-
-	
-	//=================================================================================================
-	//내장된 메모리풀
-	//=================================================================================================
-private:
-
-	static CMemoryPool<Packet> *PacketPool;
-	int RefCnt = 0;
-
-public:
-
-	static void initializePacketPool ()
-	{
-		if ( PacketPool == NULL )
-		{
-			//최초 1번 new로 할당받아서 저장된다.
-			PacketPool = new CMemoryPool<Packet>;
-		}
-		return;
-	}
-
-	//return: Packet *
-	static Packet *Alloc (void)
-	{
-		PacketPool->LOCK ();
-		Packet *p = PacketPool->Alloc ();
-		PacketPool->Free ();
-		p->AddRefCnt ();
-
-		return p;
-
-	}
-
-	//return void
-	static void Free (Packet *p)
-	{
-		if ( 0 == InterlockedDecrement (( volatile long * )&p->RefCnt) )
-		{
-			PacketPool->LOCK ();
-			PacketPool->Free (p);
-			PacketPool->Free ();
-		}
-
-		return;
-	}
-	void  AddRefCnt ()
-	{
-		InterlockedIncrement (( volatile long * )&RefCnt);
-		
-		return;
-	}
-	//////////////////////////////////////////////////////////////////////////
-	// 현재 확보 된 블럭 개수를 얻는다. (메모리풀 내부의 전체 개수)
-	//
-	// Parameters: 없음.
-	// Return: (int) 메모리 풀 내부 전체 개수
-	//////////////////////////////////////////////////////////////////////////
-	static int	GetMemoryPoolFullCount (void)
-	{
-		return PacketPool->GetMemoryPoolFullCount();
-	}
-
-	//////////////////////////////////////////////////////////////////////////
-	// 현재 사용중인 블럭 개수를 얻는다.
-	//
-	// Parameters: 없음.
-	// Return: (int) 사용중인 블럭 개수.
-	//////////////////////////////////////////////////////////////////////////
-	static int GetUseCount (void)
-	{
-		return PacketPool->GetUseCount ();
-	}
 
 
 };

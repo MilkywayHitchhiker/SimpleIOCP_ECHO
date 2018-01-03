@@ -46,9 +46,6 @@ bool CLanServer::Start (WCHAR * ServerIP, int PORT, int Session_Max, int WorkerT
 		}
 	}
 
-	//패킷내장 메모리 풀 초기화 작업.
-	Packet::initializePacketPool ();
-
 	//IOCP 포트 생성 및 스레드 생성.
 	_WorkerThread_Num = WorkerThread_Num;
 	_IOCP = CreateIoCompletionPort (INVALID_HANDLE_VALUE, NULL, 0, WorkerThread_Num);
@@ -112,21 +109,19 @@ void CLanServer::SendPacket (UINT64 SessionID, Packet *pack)
 		return;
 	}
 
-	do
+	//Send버퍼 초과로 해당 세션을 강제로 끊어줘야 된다.
+	p->SendQ.Lock ();
+	if ( p->SendQ.GetFreeSize () < 8 )
 	{
-		//Send버퍼 초과로 해당 세션을 강제로 끊어줘야 된다.
-		if ( p->SendQ.GetFreeSize () < 8 )
-		{
-			Log->Log (L"Network", LOG_ERROR, L"SendBuffer Overflow SessionID = %lld, ", p->SessionID);
-			shutdown (p->sock, SD_BOTH);
-			break;
-		}
-
-		pack->AddRefCnt ();
-		p->SendQ.Lock ();
-		p->SendQ.Put ((char *)&pack, 8);
+		Log->Log (L"Network", LOG_ERROR, L"SendBuffer Overflow SessionID = 0x%p, BuffFreeSize = %d ", p->SessionID, p->SendQ.GetFreeSize ());
+		shutdown (p->sock, SD_BOTH);
 		p->SendQ.Free ();
-	} while ( 0 );
+		return;
+	}
+
+	pack->AddRefCnt ();
+	p->SendQ.Put (( char * )&pack, 8);
+	p->SendQ.Free ();
 
 
 	PostSend (p);
@@ -220,6 +215,7 @@ void CLanServer::AcceptThread (void)
 
 		WCHAR IP[36];
 		WSAAddressToString (( SOCKADDR * )&ClientAddr, sizeof (ClientAddr), NULL, IP, (DWORD *)&addrLen);
+
 		if ( OnClientJoin (p->SessionID, IP, ntohs (ClientAddr.sin_port)) == false )
 		{
 			SessionRelease (p);
@@ -286,11 +282,11 @@ void CLanServer::WorkerThread (void)
 			{
 				if ( pOver == &pSession->RecvOver )
 				{
-					Log->Log (L"Network", LOG_DEBUG, L"Session %lld, Transferred 0 RecvOver", pSession->SessionID);
+					Log->Log (L"Network", LOG_DEBUG, L"Session 0x%p, Transferred 0 RecvOver", pSession->SessionID);
 				}
-				else
+				else if ( pOver == &pSession->SendOver )
 				{
-					Log->Log (L"Network", LOG_DEBUG, L"Session %lld, Transferred 0 SendOver", pSession->SessionID);
+					Log->Log (L"Network", LOG_DEBUG, L"Session 0x%p, Transferred 0 SendOver", pSession->SessionID);
 				}
 					//Transferred가 0 일 경우 해당 세션이 파괴된것이므로 종료절차를 밟아나감.
 				shutdown (pSession->sock, SD_BOTH);
@@ -339,7 +335,7 @@ void CLanServer::WorkerThread (void)
 
 					pSession->RecvQ.RemoveData (sizeof (Header));
 
-					Packet *Pack = Packet::Alloc ();
+					Packet *Pack = new Packet;
 
 					pSession->RecvQ.Get (Pack->GetBufferPtr(),Header);
 
@@ -348,8 +344,7 @@ void CLanServer::WorkerThread (void)
 
 					OnRecv (pSession->SessionID, Pack);
 
-					Packet::Free(Pack);
-
+					Pack->Release ();
 					InterlockedIncrement (( volatile LONG * )&_RecvPacketTPS);
 				}
 
@@ -372,7 +367,7 @@ void CLanServer::WorkerThread (void)
 					}
 
 					Pack = pSession->SendPack.pop ();
-					Packet::Free (Pack);
+					Pack->Release ();
 				}
 				pSession->SendPack.Free ();
 
@@ -460,7 +455,7 @@ CLanServer::Session * CLanServer::FindSession (UINT64 SessionID)
 	//index로 찾은 해당 세션의 id가 내가 찾던 세션이 아닐 경우
 	if ( Session_Array[Cnt].UseFlag == false || Session_Array[Cnt].SessionID != SessionID )
 	{
-		Log->Log (L"Network", LOG_WARNING, L"SessionID not match search = %p, Array = %p",SessionID, Session_Array[Cnt].SessionID);
+		Log->Log (L"Network", LOG_WARNING, L"SessionID not match search = 0x%p, Array = 0x%p",SessionID, Session_Array[Cnt].SessionID);
 		return NULL;
 	}
 
@@ -479,7 +474,7 @@ void CLanServer::PostRecv (Session * p)
 	//RecvQ 버퍼 사이즈 체크 0 이라면 정상진행이 불가이므로 해당 세션을 종료시키고 빠져나온다.
 	if ( p->RecvQ.GetFreeSize () <= 0 )
 	{
-		Log->Log (L"Network", LOG_WARNING, L"SessionID = %lld, WSABuffer 0 NotRecv", p->SessionID);
+		Log->Log (L"Network", LOG_WARNING, L"SessionID = Ox%p, WSABuffer 0 NotRecv", p->SessionID);
 
 		shutdown (p->sock, SD_BOTH);
 		IODecrement (p);
@@ -516,11 +511,11 @@ void CLanServer::PostRecv (Session * p)
 
 			if ( Errcode == WSAENOBUFS )
 			{
-				Log->Log (L"Network", LOG_WARNING, L"SessionID = %lld, ErrorCode = %ld WSAENOBUFS ERROR ", p->SessionID, Errcode);
+				Log->Log (L"Network", LOG_WARNING, L"SessionID = 0x%p, ErrorCode = %ld WSAENOBUFS ERROR ", p->SessionID, Errcode);
 			}
 			else
 			{
-				Log->Log (L"Network", LOG_SYSTEM, L"SessionID = %lld, ErrorCode = %ld PostRecv", p->SessionID, Errcode);
+				Log->Log (L"Network", LOG_SYSTEM, L"SessionID = 0x%p, ErrorCode = %ld PostRecv", p->SessionID, Errcode);
 			}
 
 			shutdown (p->sock, SD_BOTH);
@@ -531,7 +526,7 @@ void CLanServer::PostRecv (Session * p)
 	return;
 }
 
-void CLanServer::PostSend (Session * p)
+void CLanServer::PostSend (Session *p)
 {
 	int Cnt = 0;
 	DWORD SendByte;
@@ -549,8 +544,6 @@ void CLanServer::PostSend (Session * p)
 
 	if ( p->SendQ.GetUseSize () <= 0 )
 	{
-		Log->Log (L"Network", LOG_DEBUG, L"SessionID = %lld, 0 Buffer PostSend", p->SessionID);
-		
 		IODecrement (p);
 		p->SendFlag = FALSE;
 		return;
@@ -569,8 +562,7 @@ void CLanServer::PostSend (Session * p)
 		}
 
 		p->SendQ.Get ((char *)&pack, 8);
-
-		buf[Cnt].buf = (char *)pack->GetBufferPtr();
+		buf[Cnt].buf = pack->GetBufferPtr();
 		buf[Cnt].len = pack->GetDataSize ();
 		Cnt++;
 		
@@ -594,11 +586,11 @@ void CLanServer::PostSend (Session * p)
 
 			if ( Errcode == WSAENOBUFS )
 			{
-				Log->Log (L"Network", LOG_WARNING, L"SessionID = %lld, ErrorCode = %ld WSAENOBUFS ERROR ", p->SessionID, Errcode);
+				Log->Log (L"Network", LOG_WARNING, L"SessionID = 0x%p, ErrorCode = %ld WSAENOBUFS ERROR ", p->SessionID, Errcode);
 			}
 			else
 			{
-				Log->Log (L"Network", LOG_SYSTEM, L"SessionID = %lld, ErrorCode = %ld PostSend", p->SessionID, Errcode);
+				Log->Log (L"Network", LOG_SYSTEM, L"SessionID = 0x%p, ErrorCode = %ld PostSend", p->SessionID, Errcode);
 			}
 
 			shutdown (p->sock, SD_BOTH);
