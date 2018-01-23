@@ -128,12 +128,7 @@ protected:
 	//------------------------------------------------------------
 	int		_iDataSize;
 
-<<<<<<< HEAD:IOCP_ECHO_ClassVer/IOCP_ECHO_ClassVer/Packet.h
-	//------------------------------------------------------------
-	// 현재 Packet의 RefCnt
-	//------------------------------------------------------------
-	int iRefCnt;
-=======
+<<<<<<< HEAD:IOCP_ECHO_ClassVer/IOCP_ECHO_ClassVer/PacketPool.h
 	
 
 
@@ -142,7 +137,12 @@ protected:
 	//내장된 메모리풀
 	//=================================================================================================
 public:
->>>>>>> e28bb97cc9c0741d7d8da3b270a98b9ed06e4d6d:IOCP_ECHO_ClassVer/IOCP_ECHO_ClassVer/PacketPool.h
+=======
+	//------------------------------------------------------------
+	// 현재 Packet의 RefCnt
+	//------------------------------------------------------------
+	int iRefCnt;
+>>>>>>> new1:IOCP_ECHO_ClassVer/IOCP_ECHO_ClassVer/Packet.h
 
 	static Hitchhiker::CMemoryPool<Packet> *PacketPool;
 	int RefCnt=0;

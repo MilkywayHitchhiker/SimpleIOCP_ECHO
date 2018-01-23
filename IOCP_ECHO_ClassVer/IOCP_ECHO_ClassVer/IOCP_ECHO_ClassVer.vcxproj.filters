@@ -34,9 +34,19 @@
       <Filter>소스 파일</Filter>
     </ClInclude>
     <ClInclude Include="CrashDump.h">
+<<<<<<< HEAD
       <Filter>소스 파일</Filter>
     </ClInclude>
+    <ClInclude Include="PacketPool.h">
+=======
+>>>>>>> new1
+      <Filter>소스 파일</Filter>
+    </ClInclude>
+<<<<<<< HEAD
     <ClInclude Include="Stack.h">
+=======
+    <ClInclude Include="MemoryPool.h">
+>>>>>>> e28bb97cc9c0741d7d8da3b270a98b9ed06e4d6d
       <Filter>헤더 파일</Filter>
     </ClInclude>
     <ClInclude Include="MemoryPool.h">
@@ -47,9 +57,6 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="stdafx.cpp">
-      <Filter>소스 파일</Filter>
-    </ClCompile>
     <ClCompile Include="IOCP_ECHO_ClassVer.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
@@ -62,7 +69,14 @@
     <ClCompile Include="APIHook.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
+<<<<<<< HEAD
+    <ClCompile Include="stdafx.cpp">
+      <Filter>헤더 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="PacketPool.cpp">
+=======
     <ClCompile Include="Packet.cpp">
+>>>>>>> new1
       <Filter>소스 파일</Filter>
     </ClCompile>
   </ItemGroup>

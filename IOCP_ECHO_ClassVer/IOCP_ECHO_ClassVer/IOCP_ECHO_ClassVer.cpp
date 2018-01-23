@@ -23,13 +23,24 @@ public:
 		short Header = sizeof(Num);
 		*p >> Num;
 		
+<<<<<<< HEAD
+		Packet *Pack = Packet::Alloc();
+
+		*Pack << 8;
+=======
 		Packet *Pack = new Packet;
 		*Pack <<Header;
+>>>>>>> new1
 		*Pack << Num;
 
 		SendPacket (SessionID, Pack);
 
+<<<<<<< HEAD
+		Packet::Free(Pack);
+
+=======
 		Pack->Release ();
+>>>>>>> new1
 		return;
 	}
 	virtual void OnSend (UINT64 SessionID, INT SendByte)
@@ -111,10 +122,6 @@ int main()
 		else if ( GetAsyncKeyState ('S') & 0x8001 )
 		{
 			Network.Start (L"127.0.0.1", 6000, 200, 3);
-		}
-		else if ( GetAsyncKeyState ('Q') & 0x8001 )
-		{
-			break;
 		}
 		*/
 

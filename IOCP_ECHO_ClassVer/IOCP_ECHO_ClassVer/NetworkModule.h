@@ -7,11 +7,10 @@
 
 #include <process.h>
 
-#include "Packet.h"
+#include "PacketPool.h"
 #include "RingBuffer.h"
 #include "CrashDump.h"
 #include "Stack.h"
-
 
 class CLanServer
 {
@@ -29,8 +28,14 @@ protected:
 		long SendFlag = FALSE;
 		CRingbuffer SendQ;
 		OVERLAPPED SendOver;
+<<<<<<< HEAD
+
+		CRingbuffer SendPacketlist;
+		
+=======
 		CStack<Packet *> SendPack;
 
+>>>>>>> new1
 		CRingbuffer RecvQ;
 		OVERLAPPED RecvOver;
 		

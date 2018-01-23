@@ -1,6 +1,6 @@
 #include "stdafx.h"
 #include <windows.h>
-#include "Packet.h"
+#include "PacketPool.h"
 
 
 Packet::Packet() : Buffer (NULL),DataFieldStart (NULL),DataFieldEnd (NULL),ReadPos (NULL),WritePos (NULL)

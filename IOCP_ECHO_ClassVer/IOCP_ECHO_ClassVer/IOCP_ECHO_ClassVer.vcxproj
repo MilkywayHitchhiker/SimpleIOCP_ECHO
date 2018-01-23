@@ -148,7 +148,7 @@
     <ClInclude Include="CrashDump.h" />
     <ClInclude Include="MemoryPool.h" />
     <ClInclude Include="NetworkModule.h" />
-    <ClInclude Include="Packet.h" />
+    <ClInclude Include="PacketPool.h" />
     <ClInclude Include="RingBuffer.h" />
     <ClInclude Include="Stack.h" />
     <ClInclude Include="stdafx.h" />
@@ -159,7 +159,7 @@
     <ClCompile Include="APIHook.cpp" />
     <ClCompile Include="IOCP_ECHO_ClassVer.cpp" />
     <ClCompile Include="NetworkModule.cpp" />
-    <ClCompile Include="Packet.cpp" />
+    <ClCompile Include="PacketPool.cpp" />
     <ClCompile Include="RingBuffer.cpp" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
