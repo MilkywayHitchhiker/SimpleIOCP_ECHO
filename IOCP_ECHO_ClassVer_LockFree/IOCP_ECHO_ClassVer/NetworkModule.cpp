@@ -1,12 +1,15 @@
 #include"stdafx.h"
+
 #include "NetworkModule.h"
-#include "System_Log.h"
+
 
 hiker::CSystemLog *Log = hiker::CSystemLog::GetInstance (LOG_DEBUG);
+
 
 CLanServer::CLanServer (void)
 {
 	bServerOn = false;
+	Packet::Initialize ();
 }
 
 CLanServer::~CLanServer (void)
@@ -41,7 +44,7 @@ bool CLanServer::Start (WCHAR * ServerIP, int PORT, int Session_Max, int WorkerT
 	{
 		if ( Session_Array[Cnt].UseFlag == false )
 		{
-			emptySession.push (Cnt);
+			emptySession.Push (Cnt);
 		}
 	}
 
@@ -74,9 +77,6 @@ bool CLanServer::Stop (void)
 	//AcceptThread 종료
 	closesocket (_ListenSock);
 
-	//AcceptThread 종료대기.
-	WaitForSingleObject (&Thread[0], INFINITE);
-
 	//세션 정리
 	for ( int Cnt = 0; Cnt < _Session_Max; Cnt++ )
 	{
@@ -86,23 +86,16 @@ bool CLanServer::Stop (void)
 		}
 	}
 
-	//PQCS로 워커스레드 종료.꺼지는 워커스레드에서 다시 PQCS로 신호보냄.
+
+
+	//PQCS로 워커 스레드 끄기.
+	WaitForSingleObject (&Thread[0], INFINITE);
+
 	PostQueuedCompletionStatus (_IOCP, 0, 0, 0);
 
 	//스레드 종료 대기.
 	WaitForMultipleObjects (_WorkerThread_Num + 1, Thread, TRUE, INFINITE);
 
-<<<<<<< HEAD
-=======
-	
-	if ( WSACleanup () )
-	{
-		Log->Log (L"Network", LOG_DEBUG, L" WSACleanUp_Error %d", GetLastError ());
-	}
-	
-
-
->>>>>>> e28bb97cc9c0741d7d8da3b270a98b9ed06e4d6d
 	wprintf (L"\nNetworkModule End \n");
 	Log->Log (L"Network", LOG_SYSTEM, L" NetworkStop");
 	bServerOn = false;
@@ -112,44 +105,14 @@ bool CLanServer::Stop (void)
 void CLanServer::SendPacket (UINT64 SessionID, Packet *pack)
 {
 
-	Session *p = FindSession (SessionID);
+	Session *p = FindLockSession (SessionID);
 	if ( p == NULL )
 	{
 		return;
 	}
 
-<<<<<<< HEAD
-	do
-	{
-		//락을 걸고 들어오기 직전에 해당 세션이 삭제된 경우
-		if ( p->UseFlag == false || p->SessionID != SessionID )
-		{
-			break;
-		}
-
-
-		//Send버퍼 초과로 해당 세션을 강제로 끊어줘야 된다.
-		p->SendQ.Lock ();
-		if ( p->SendQ.GetFreeSize () < pack->GetDataSize () + 2 )
-		{
-			short Size;
-			INT64 NUM;
-			pack->GetData (( char* )&Size, sizeof (INT));
-			pack->GetData (( char* )&NUM, sizeof (INT64));
-			Log->Log (L"Network", LOG_ERROR, L"SendBuffer Overflow SessionID = %lld, Header = %d, Packet = %lld", p->SessionID,Size,NUM);
-
-			shutdown (p->sock, SD_BOTH);
-			break;
-		}
-
-		pack->AddRefCnt ();
-		p->SendQ.Put ((char *)pack, 8);
-
-	} while ( 0 );
-=======
-
+	//Send버퍼 초과로 해당 세션을 강제로 끊어줘야 된다.
 	p->SendQ.Lock ();
-	//Send버퍼 초과일시 해당 세션을 강제로 끊어줘야 된다.
 	if ( p->SendQ.GetFreeSize () < 8 )
 	{
 		Log->Log (L"Network", LOG_ERROR, L"SendBuffer Overflow SessionID = 0x%p, BuffFreeSize = %d ", p->SessionID, p->SendQ.GetFreeSize ());
@@ -157,24 +120,31 @@ void CLanServer::SendPacket (UINT64 SessionID, Packet *pack)
 		p->SendQ.Free ();
 		return;
 	}
->>>>>>> new1
+	short Header = sizeof (INT64);
 
-	pack->AddRefCnt ();
+	pack->Add ();
+	pack->PutHeader (( char * )&Header, sizeof (Header));
 	p->SendQ.Put (( char * )&pack, 8);
 	p->SendQ.Free ();
 
 
 	PostSend (p);
 
+	IODecrement (p);
 	return;
 }
 
 void CLanServer::Disconnect (UINT64 SessionID)
 {
-	Session *p = FindSession (SessionID);
+	Session *p = FindLockSession (SessionID);
+	if ( p == NULL )
+	{
+		return;
+	}
 
 	shutdown (p->sock, SD_BOTH);
 
+	IODecrement (p);
 	return;
 }
 
@@ -225,21 +195,19 @@ void CLanServer::AcceptThread (void)
 
 		//비어있는 세션찾기.
 		//비어있는 세션이 없다면 로그로 남기고 서버 종료.
-		emptySession.LOCK ();
-		if ( emptySession.empty () )
+
+		if ( emptySession.isEmpty () )
 		{
 			closesocket (hClientSock);
 			Log->Log (L"Network", LOG_SYSTEM, L"Session %d Use Full ", _Session_Max);
 			break;
 		}
-		int Cnt = emptySession.pop ();
-		emptySession.Free ();
+		int Cnt;
+		emptySession.Pop (&Cnt);
+
+		InterlockedIncrement64 (&Session_Array[Cnt].IOCount);
 
 		p = &Session_Array[Cnt];
-
-		//동기화를 위해서 IO카운트 증가.
-		InterlockedIncrement64 (&p->IOCount);
-
 		p->sock = hClientSock;
 		p->SessionID = CreateSessionID (Cnt, InterlockedIncrement64 (( volatile LONG64 * )&_SessionID_Count));
 		p->UseFlag = true;
@@ -252,12 +220,10 @@ void CLanServer::AcceptThread (void)
 
 
 
-
-
+		//OnClientJoin으로 새로운 접속자 알림.
 		WCHAR IP[36];
 		WSAAddressToString (( SOCKADDR * )&ClientAddr, sizeof (ClientAddr), NULL, IP, (DWORD *)&addrLen);
 
-		//새로운 접속자 알림.
 		if ( OnClientJoin (p->SessionID, IP, ntohs (ClientAddr.sin_port)) == false )
 		{
 			SessionRelease (p);
@@ -386,12 +352,7 @@ void CLanServer::WorkerThread (void)
 
 					OnRecv (pSession->SessionID, Pack);
 
-<<<<<<< HEAD
 					Packet::Free (Pack);
-
-=======
-					Pack->Release ();
->>>>>>> new1
 					InterlockedIncrement (( volatile LONG * )&_RecvPacketTPS);
 				}
 
@@ -404,41 +365,26 @@ void CLanServer::WorkerThread (void)
 
 				OnSend (pSession->SessionID, Transferred);
 
-<<<<<<< HEAD
-				Packet *p;
-				int QSize = pSession->SendPacketlist.GetUseSize () / 8;
-				for ( int Cnt = 0; Cnt < QSize; Cnt++ )
-				{
-					pSession->SendPacketlist.Get (( char * )p, 8);
-					Packet::Free (p);
-				}
-								
-=======
 				Packet *Pack;
-				pSession->SendPack.LOCK ();
 				while ( 1 )
 				{
-					if ( pSession->SendPack.empty() )
+					if ( pSession->SendPack.isEmpty() )
 					{
 						break;
 					}
 
-					Pack = pSession->SendPack.pop ();
-					Pack->Release ();
+					pSession->SendPack.Pop (&Pack);
+					Packet::Free(Pack);
 				}
-				pSession->SendPack.Free ();
 
 				
->>>>>>> new1
 				pSession->SendFlag = FALSE;
 
-				pSession->SendQ.Lock ();
+
 				if ( pSession->SendQ.GetUseSize () > 0 )
 				{
 					PostSend (pSession);
 				}
-				pSession->SendQ.Free ();
-
 				
 				InterlockedIncrement (( volatile LONG * )&_SendPacketTPS);
 			}
@@ -506,16 +452,40 @@ bool CLanServer::InitializeNetwork (WCHAR *IP, int PORT)
 
 }
 
-CLanServer::Session * CLanServer::FindSession (UINT64 SessionID)
+CLanServer::Session *CLanServer::FindLockSession (UINT64 SessionID)
 {
 	int Cnt;
-
+	
 	Cnt = indexSessionID (SessionID);
+
+	//IO증가. 1이라면 이전에 어디선가 Release를 타고 있을수 있으므로 IO차감하고 나감.
+	if ( InterlockedIncrement64 (( volatile LONG64 * )&Session_Array[Cnt].IOCount) == 1)
+	{
+		IODecrement (&Session_Array[Cnt]);
+		return NULL;
+	}
+	//index로 찾은 해당 세션의 id가 내가 찾던 세션이 아닐 경우
+	if ( Session_Array[Cnt].UseFlag == false  )
+	{
+		Log->Log (L"Network", LOG_WARNING, L"Delete Session search = 0x%p, Array = 0x%p", SessionID, Session_Array[Cnt].SessionID);
+		IODecrement (&Session_Array[Cnt]);
+		return NULL;
+	}
+
+	//세션 ID가 일치하지 않을 경우.
+	if ( Session_Array[Cnt].SessionID != SessionID )
+	{
+		Log->Log (L"Network", LOG_WARNING, L"SessionID not match search = 0x%p, Array = 0x%p", SessionID, Session_Array[Cnt].SessionID);
+		IODecrement (&Session_Array[Cnt]);
+		return NULL;
+	}
+
+	return &Session_Array[Cnt];
 
 	//index로 찾은 해당 세션의 id가 내가 찾던 세션이 아닐 경우
 	if ( Session_Array[Cnt].UseFlag == false || Session_Array[Cnt].SessionID != SessionID )
 	{
-		Log->Log (L"Network", LOG_WARNING, L"SessionID not match search = 0x%p, Array = 0x%p",SessionID, Session_Array[Cnt].SessionID);
+		Log->Log (L"Network", LOG_WARNING, L"SessionID not match search = 0x%p, Array = 0x%p", SessionID, Session_Array[Cnt].SessionID);
 		return NULL;
 	}
 
@@ -602,35 +572,13 @@ void CLanServer::PostSend (Session *p)
 	}
 
 
-	//WSASend 셋팅 및 등록부
-	WSABUF buf[100];
-
-	p->SendQ.Lock ();
-	int QSize = p->SendQ.GetUseSize ();
-	if ( QSize <= 0 )
+	if ( p->SendQ.GetUseSize () <= 0 )
 	{
-<<<<<<< HEAD
-		Log->Log (L"Network", LOG_DEBUG, L"SessionID = %lld, 0 Buffer PostSend", p->SessionID);
-
-=======
->>>>>>> new1
 		IODecrement (p);
 		p->SendFlag = FALSE;
-		p->SendQ.Free ();
 		return;
 	}
 
-<<<<<<< HEAD
-	QSize = QSize / 8;
-	Packet *buff;
-	for ( int wsaCnt = 0; wsaCnt < QSize; wsaCnt++ )
-	{
-		buff = ( Packet * )buf[wsaCnt].buf;
-		p->SendQ.Get (buf[wsaCnt].buf, 8);
-		buf[wsaCnt].len = buff->GetDataSize();
-		p->SendPacketlist.Put (buf[wsaCnt].buf, 8);
-
-=======
 	//WSASend 셋팅 및 등록부
 	WSABUF buf[SendbufMax];
 
@@ -646,10 +594,9 @@ void CLanServer::PostSend (Session *p)
 		p->SendQ.Get ((char *)&pack, 8);
 		buf[Cnt].buf = pack->GetBufferPtr();
 		buf[Cnt].len = pack->GetDataSize ();
->>>>>>> new1
 		Cnt++;
 		
-		p->SendPack.push (pack);
+		p->SendPack.Push (pack);
 
 	}
 	p->SendQ.Free ();
@@ -688,11 +635,19 @@ void CLanServer::PostSend (Session *p)
 
 void CLanServer::SessionRelease (Session * p)
 {
-	if ( p->UseFlag == false )
+	//IOCount를 올려서 1이라면 그 전에 0 이었으므로 어디선가 Release를 타고있을 수 있음. IO만 내리고 나오자.
+	if ( InterlockedIncrement64 (( volatile LONG64 * )&p->IOCount) > 1)
 	{
+		InterlockedDecrement (( volatile long * )&p->IOCount);
 		return;
 	}
-	p->UseFlag = false;
+
+	//Useflag가 이미 false라면 Release진행중이므로 그냥 빠져나감.
+	if ( InterlockedCompareExchange((volatile long *)&p->UseFlag,false,true) == false )
+	{
+		InterlockedDecrement (( volatile long * )&p->IOCount);
+		return;
+	}
 
 	OnClientLeave (p->SessionID);
 
@@ -701,11 +656,11 @@ void CLanServer::SessionRelease (Session * p)
 	p->RecvQ.ClearBuffer ();
 	p->SendQ.ClearBuffer ();
 
-	emptySession.LOCK ();
-	emptySession.push (indexSessionID (p->SessionID));
-	emptySession.Free ();
 
+	InterlockedDecrement (( volatile long * )&p->IOCount);
 	InterlockedDecrement (( volatile long * )&_Use_Session_Cnt);
+
+	emptySession.Push (indexSessionID (p->SessionID));
 
 	return;
 }

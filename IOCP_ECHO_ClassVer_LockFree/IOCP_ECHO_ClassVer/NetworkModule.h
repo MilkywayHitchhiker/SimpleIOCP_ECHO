@@ -6,11 +6,11 @@
 #pragma comment(lib,"ws2_32.lib")
 
 #include <process.h>
-
+#include "lib\\Library.h"
 #include "PacketPool.h"
 #include "RingBuffer.h"
-#include "CrashDump.h"
-#include "Stack.h"
+#include "LockFreeStack.h"
+
 
 class CLanServer
 {
@@ -28,14 +28,8 @@ protected:
 		long SendFlag = FALSE;
 		CRingbuffer SendQ;
 		OVERLAPPED SendOver;
-<<<<<<< HEAD
+		CStack_LF<Packet *> SendPack;
 
-		CRingbuffer SendPacketlist;
-		
-=======
-		CStack<Packet *> SendPack;
-
->>>>>>> new1
 		CRingbuffer RecvQ;
 		OVERLAPPED RecvOver;
 		
@@ -45,7 +39,7 @@ protected:
 	SOCKET _ListenSock;
 	int _Session_Max;
 	Session *Session_Array;
-	CStack<int> emptySession;
+	CStack_LF<int> emptySession;
 
 	char _SessionID_Count[6];
 
@@ -73,7 +67,7 @@ protected:
 
 	bool InitializeNetwork (WCHAR *IP,int PORT);
 
-	Session *FindSession (UINT64 SessionID);
+	Session *FindLockSession (UINT64 SessionID);
 	UINT64 CreateSessionID (short index, UINT64 Unique)
 	{
 			return ((UINT64)index << 48) | (Unique);
@@ -102,7 +96,7 @@ public :
 	bool Stop (void);
 
 
-
+	//외부에서 확인할 수 있는 수치 핸들.
 	UINT RecvTPS (bool Reset)
 	{
 		UINT RecvTPS = _RecvPacketTPS;
@@ -138,7 +132,14 @@ public :
 	{
 		return _Use_Session_Cnt;
 	}
-
+	UINT Full_MemPoolCnt (void)
+	{
+		return ( UINT )Packet::PacketPool->GetFullCount ();
+	}
+	UINT Alloc_MemPoolCnt (void)
+	{
+		return ( UINT )Packet::PacketPool->GetAllocCount ();
+	}
 protected:
 	static unsigned int WINAPI AcceptThread (LPVOID pParam);
 	static unsigned int WINAPI WorkerThread (LPVOID pParam);

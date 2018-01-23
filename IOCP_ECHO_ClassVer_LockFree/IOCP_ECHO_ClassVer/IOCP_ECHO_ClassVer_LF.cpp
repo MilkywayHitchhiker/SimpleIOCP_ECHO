@@ -20,27 +20,14 @@ public:
 	virtual void OnRecv (UINT64 SessionID, Packet *p)
 	{
 		INT64 Num;
-		short Header = sizeof(Num);
 		*p >> Num;
 		
-<<<<<<< HEAD
 		Packet *Pack = Packet::Alloc();
-
-		*Pack << 8;
-=======
-		Packet *Pack = new Packet;
-		*Pack <<Header;
->>>>>>> new1
 		*Pack << Num;
 
 		SendPacket (SessionID, Pack);
 
-<<<<<<< HEAD
-		Packet::Free(Pack);
-
-=======
-		Pack->Release ();
->>>>>>> new1
+		Packet::Free (Pack);
 		return;
 	}
 	virtual void OnSend (UINT64 SessionID, INT SendByte)
@@ -50,17 +37,15 @@ public:
 
 	virtual bool OnClientJoin (UINT64 SessionID, WCHAR *IP, int PORT)
 	{
-		short Header = 8;
 		INT64 Data = 0x7FFFFFFFFFFFFFFF;
 
-		Packet *Pack = new Packet;
-		*Pack << Header;
+		Packet *Pack = Packet::Alloc();
 		*Pack << Data;
 
 		SendPacket (SessionID, Pack);
 		
 
-		Pack->Release ();
+		Packet::Free (Pack);
 
 		return true;
 	}
@@ -99,7 +84,6 @@ int main()
 			wprintf (L"Sec RecvTPS = %d \n", RecvTPS);
 			wprintf (L"Sec SendTPS = %d \n", SendTPS);
 			wprintf (L"MemoryPoolFull Cnt = %d \n", MemoryPoolCnt);
-			wprintf (L"MemoryPoolUse Cnt = %d \n", MemoryPoolCnt);
 			wprintf (L"Connect Session Cnt = %d \n", ConnectSessionCnt);
 
 			wprintf (L"==========================\n");
@@ -109,6 +93,7 @@ int main()
 			RecvTPS = Network.RecvTPS (true);
 			SendTPS = Network.SendTPS (true);
 			ConnectSessionCnt = Network.Use_SessionCnt ();
+			MemoryPoolCnt = Network.Full_MemPoolCnt ();
 
 			StartTime = EndTime;
 		}

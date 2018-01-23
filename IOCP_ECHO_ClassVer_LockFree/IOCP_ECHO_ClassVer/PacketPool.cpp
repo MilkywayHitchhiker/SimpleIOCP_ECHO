@@ -2,6 +2,8 @@
 #include <windows.h>
 #include "PacketPool.h"
 
+CMemoryPool<Packet> *Packet::PacketPool;
+
 
 Packet::Packet() : Buffer (NULL),DataFieldStart (NULL),DataFieldEnd (NULL),ReadPos (NULL),WritePos (NULL)
 {
@@ -68,36 +70,33 @@ void Packet::Initial(int iBufferSize)
 		}
 	}
 
-	DataFieldStart = Buffer;
-	DataFieldEnd = Buffer + _iBufferSize;
+	DataFieldStart = Buffer+HEADERSIZE_DEFAULT;
+	DataFieldEnd = Buffer + (_iBufferSize- HEADERSIZE_DEFAULT);
 
-	ReadPos = WritePos = DataFieldStart;
+	ReadPos = WritePos = HeaderStartPos = DataFieldStart;
 
 	_iDataSize = 0;
-
+	HeaderSize = 0;
 	iRefCnt = 1;
 	
 	return;
 }
 
 //RefCnt를 1 증가시킴. 
-void Packet::AddRefCnt (void)
+void Packet::Add (void)
 {
 	InterlockedIncrement (( volatile long * )&iRefCnt);
 	return;
 }
 
 // RefCnt를 하나 차감시키고 REfCnt가 0이 되면 자기자신 delete하고 빠져나옴.
-void Packet::Release(void)
+void Packet::Release (void)
 {
-	if ( InterlockedDecrement((volatile long *)&iRefCnt) == 0 )
+	if ( NULL != BufferExpansion )
 	{
-		if ( NULL != BufferExpansion )
-		{
-			delete[] BufferExpansion;
-		}
-		delete this;
+		delete[] BufferExpansion;
 	}
+	delete this;
 	return;
 }
 
@@ -106,10 +105,10 @@ void Packet::Release(void)
 void Packet::Clear(void)
 {
 
-	DataFieldStart = Buffer;
-	DataFieldEnd = Buffer + _iBufferSize;
+	DataFieldStart = Buffer + HEADERSIZE_DEFAULT;
+	DataFieldEnd = Buffer + (_iBufferSize - HEADERSIZE_DEFAULT);
 
-	ReadPos = WritePos = DataFieldStart;
+	ReadPos = WritePos = HeaderStartPos = DataFieldStart;
 
 	_iDataSize = 0;
 }
@@ -317,4 +316,19 @@ int Packet::PutData(char *chpSrc, int iSrcSize)
 	_iDataSize += iSrcSize;
 
 	return iSrcSize;
+}
+
+// 헤더 삽입.
+int	Packet::PutHeader (char *chpSrc, int iSrcSize)
+{
+	if ( HeaderStartPos - iSrcSize < Buffer )
+		return 0;
+
+	char *PrePos = HeaderStartPos - iSrcSize;
+	memcpy (PrePos, chpSrc, iSrcSize);
+	HeaderStartPos = PrePos;
+
+	_iDataSize += iSrcSize;
+
+	return  iSrcSize;
 }

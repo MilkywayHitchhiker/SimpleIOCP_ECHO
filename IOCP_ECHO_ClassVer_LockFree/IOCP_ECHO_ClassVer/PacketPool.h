@@ -2,12 +2,14 @@
 #pragma once
 #include <Windows.h>
 #include "MemoryPool.h"
+
 class Packet
 {
 public:
 	enum PACKET
 	{
-		BUFFER_DEFAULT			= 10000		// 패킷의 기본 버퍼 사이즈.
+		BUFFER_DEFAULT			= 10000,		// 패킷의 기본 버퍼 사이즈.
+		HEADERSIZE_DEFAULT		= 5
 	};
 
 	// 생성자, 파괴자.
@@ -21,7 +23,7 @@ public:
 	void	Initial(int iBufferSize = BUFFER_DEFAULT);
 
 	//RefCnt를 1 증가시킴. 
-	void	AddRefCnt (void);
+	void	Add (void);
 
 	// RefCnt를 하나 차감시키고 REfCnt가 0이 되면 자기자신 delete하고 빠져나옴.
 	void	Release(void);
@@ -40,7 +42,7 @@ public:
 
 
 	// 버퍼 포인터 얻기.
-	char	*GetBufferPtr(void) { return Buffer; }
+	char	*GetBufferPtr(void) { return HeaderStartPos; }
 
 	// 버퍼 Pos 이동.
 	int		MoveWritePos(int iSize);
@@ -50,9 +52,8 @@ public:
 
 
 
-	//=================================================================================================
+
 	// 연산자 오퍼레이터.
-	//=================================================================================================
 	Packet	&operator = (Packet &SrcPacket);
 
 	//////////////////////////////////////////////////////////////////////////
@@ -97,7 +98,7 @@ public:
 	// 데이타 삽입.
 	// Return 복사한 사이즈.
 	int		PutData(char *chpSrc, int iSrcSize);
-
+	int		PutHeader (char *chpSrc, int iSrcSize);
 
 protected:
 
@@ -114,6 +115,7 @@ protected:
 	//------------------------------------------------------------
 	char	*DataFieldStart;
 	char	*DataFieldEnd;
+	char	*HeaderStartPos;
 
 
 	//------------------------------------------------------------
@@ -127,71 +129,40 @@ protected:
 	// 현재 버퍼에 사용중인 사이즈.
 	//------------------------------------------------------------
 	int		_iDataSize;
-
-<<<<<<< HEAD:IOCP_ECHO_ClassVer/IOCP_ECHO_ClassVer/PacketPool.h
-	
-
-
-
-	//=================================================================================================
-	//내장된 메모리풀
-	//=================================================================================================
-public:
-=======
+	int		HeaderSize;
 	//------------------------------------------------------------
 	// 현재 Packet의 RefCnt
 	//------------------------------------------------------------
 	int iRefCnt;
->>>>>>> new1:IOCP_ECHO_ClassVer/IOCP_ECHO_ClassVer/Packet.h
 
-	static Hitchhiker::CMemoryPool<Packet> *PacketPool;
-	int RefCnt=0;
-public:
-	static void InitializePacketPool (void)
+public :
+	static CMemoryPool<Packet> *PacketPool;
+
+public :
+	
+	static void Initialize (void)
 	{
 		if ( PacketPool == NULL )
 		{
-			PacketPool = new Hitchhiker::CMemoryPool<Packet>;
+			PacketPool = new CMemoryPool<Packet> (0);
 		}
 		return;
 	}
-	//return: Packet *
+	
+
 	static Packet *Alloc (void)
 	{
-
-		if ( PacketPool == NULL )
-		{
-			//최초 1번 new로 할당받아서 저장된다.
-			InterlockedCompareExchangePointer (( volatile PVOID * )PacketPool, NULL, new Hitchhiker::CMemoryPool<Packet>);
-		}
-
-		PacketPool->Lock ();
 		Packet *p = PacketPool->Alloc ();
-		PacketPool->Free ();
-
-		p->AddRefCnt ();
-
 		return p;
-
 	}
-
-	//return void
-	static void Free (Packet *p)
+	static bool Free (Packet *p)
 	{
-		if ( 0 == InterlockedDecrement (( volatile long * )&p->RefCnt) )
+		if ( InterlockedDecrement (( volatile long * )&p->iRefCnt) == 0 )
 		{
-			PacketPool->Lock ();
-			PacketPool->Free (p);
-			PacketPool->Free ();
+			return PacketPool->Free (p);
 		}
+		return true;
+	}
 
-		return;
-	}
-	void  AddRefCnt ()
-	{
-		InterlockedIncrement (( volatile long * )&RefCnt);
-		
-		return;
-	}
 
 };
