@@ -83,7 +83,7 @@ int main()
 			wprintf (L"AcceptTPS = %d \n", AcceptTPS);
 			wprintf (L"Sec RecvTPS = %d \n", RecvTPS);
 			wprintf (L"Sec SendTPS = %d \n", SendTPS);
-			wprintf (L"MemoryPoolFull Cnt = %d \n", MemoryPoolCnt);
+			wprintf (L"MemPool Alloc = %d \n", MemoryPoolCnt);
 			wprintf (L"Connect Session Cnt = %d \n", ConnectSessionCnt);
 
 			wprintf (L"==========================\n");
@@ -93,7 +93,7 @@ int main()
 			RecvTPS = Network.RecvTPS (true);
 			SendTPS = Network.SendTPS (true);
 			ConnectSessionCnt = Network.Use_SessionCnt ();
-			MemoryPoolCnt = Network.Full_MemPoolCnt ();
+			MemoryPoolCnt = Network.Alloc_MemPoolCnt ();
 
 			StartTime = EndTime;
 		}
