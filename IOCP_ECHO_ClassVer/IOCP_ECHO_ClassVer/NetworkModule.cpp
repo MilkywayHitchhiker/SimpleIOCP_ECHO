@@ -109,8 +109,9 @@ void CLanServer::SendPacket (UINT64 SessionID, Packet *pack)
 		return;
 	}
 
-	//Send버퍼 초과로 해당 세션을 강제로 끊어줘야 된다.
+
 	p->SendQ.Lock ();
+	//Send버퍼 초과일시 해당 세션을 강제로 끊어줘야 된다.
 	if ( p->SendQ.GetFreeSize () < 8 )
 	{
 		Log->Log (L"Network", LOG_ERROR, L"SendBuffer Overflow SessionID = 0x%p, BuffFreeSize = %d ", p->SessionID, p->SendQ.GetFreeSize ());
@@ -196,7 +197,9 @@ void CLanServer::AcceptThread (void)
 		emptySession.Free ();
 
 		p = &Session_Array[Cnt];
-		
+
+		//동기화를 위해서 IO카운트 증가.
+		InterlockedIncrement64 (&p->IOCount);
 
 		p->sock = hClientSock;
 		p->SessionID = CreateSessionID (Cnt, InterlockedIncrement64 (( volatile LONG64 * )&_SessionID_Count));
@@ -209,13 +212,13 @@ void CLanServer::AcceptThread (void)
 		CreateIoCompletionPort (( HANDLE )p->sock, _IOCP, ( ULONG_PTR )p, 0);
 
 
-		//새로운 접속자 알림.
-		InterlockedIncrement64 (&p->IOCount);
+
 
 
 		WCHAR IP[36];
 		WSAAddressToString (( SOCKADDR * )&ClientAddr, sizeof (ClientAddr), NULL, IP, (DWORD *)&addrLen);
 
+		//새로운 접속자 알림.
 		if ( OnClientJoin (p->SessionID, IP, ntohs (ClientAddr.sin_port)) == false )
 		{
 			SessionRelease (p);
@@ -605,14 +608,18 @@ void CLanServer::PostSend (Session *p)
 
 void CLanServer::SessionRelease (Session * p)
 {
+	if ( p->UseFlag == false )
+	{
+		return;
+	}
+	p->UseFlag = false;
+
 	OnClientLeave (p->SessionID);
 
 	closesocket (p->sock);
 
 	p->RecvQ.ClearBuffer ();
 	p->SendQ.ClearBuffer ();
-
-	p->UseFlag = false;
 
 	emptySession.LOCK ();
 	emptySession.push (indexSessionID (p->SessionID));
