@@ -20,14 +20,16 @@ public:
 	virtual void OnRecv (UINT64 SessionID, Packet *p)
 	{
 		INT64 Num;
+		short Header = sizeof(Num);
 		*p >> Num;
 		
-		Packet *Pack = Packet::Alloc();
+		Packet *Pack = new Packet;
+		*Pack <<Header;
 		*Pack << Num;
 
 		SendPacket (SessionID, Pack);
 
-		Packet::Free (Pack);
+		Pack->Release ();
 		return;
 	}
 	virtual void OnSend (UINT64 SessionID, INT SendByte)
@@ -37,15 +39,17 @@ public:
 
 	virtual bool OnClientJoin (UINT64 SessionID, WCHAR *IP, int PORT)
 	{
+		short Header = 8;
 		INT64 Data = 0x7FFFFFFFFFFFFFFF;
 
-		Packet *Pack = Packet::Alloc();
+		Packet *Pack = new Packet;
+		*Pack << Header;
 		*Pack << Data;
 
 		SendPacket (SessionID, Pack);
 		
 
-		Packet::Free (Pack);
+		Pack->Release ();
 
 		return true;
 	}
@@ -84,6 +88,7 @@ int main()
 			wprintf (L"Sec RecvTPS = %d \n", RecvTPS);
 			wprintf (L"Sec SendTPS = %d \n", SendTPS);
 			wprintf (L"MemoryPoolFull Cnt = %d \n", MemoryPoolCnt);
+			wprintf (L"MemoryPoolUse Cnt = %d \n", MemoryPoolCnt);
 			wprintf (L"Connect Session Cnt = %d \n", ConnectSessionCnt);
 
 			wprintf (L"==========================\n");
@@ -93,7 +98,6 @@ int main()
 			RecvTPS = Network.RecvTPS (true);
 			SendTPS = Network.SendTPS (true);
 			ConnectSessionCnt = Network.Use_SessionCnt ();
-			MemoryPoolCnt = Network.Full_MemPoolCnt ();
 
 			StartTime = EndTime;
 		}
@@ -107,6 +111,10 @@ int main()
 		else if ( GetAsyncKeyState ('S') & 0x8001 )
 		{
 			Network.Start (L"127.0.0.1", 6000, 200, 3);
+		}
+		else if ( GetAsyncKeyState ('Q') & 0x8001 )
+		{
+			break;
 		}
 		*/
 
