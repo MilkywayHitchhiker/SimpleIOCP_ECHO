@@ -24,13 +24,14 @@ public:
 
 		*p >> Num;
 		
-		Packet *Pack = new Packet;
+		Packet *Pack = Packet::Alloc();
 
+		*Pack << 8;
 		*Pack << Num;
 
 		SendPacket (SessionID, Pack);
 
-		delete Pack;
+		Packet::Free(Pack);
 
 		return;
 	}
@@ -98,10 +99,6 @@ int main()
 		else if ( GetAsyncKeyState ('S') & 0x8001 )
 		{
 			Network.Start (L"127.0.0.1", 6000, 200, 3);
-		}
-		else if ( GetAsyncKeyState ('Q') & 0x8001 )
-		{
-			break;
 		}
 		*/
 

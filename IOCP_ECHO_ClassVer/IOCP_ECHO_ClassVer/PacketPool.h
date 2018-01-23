@@ -1,7 +1,7 @@
 
 #pragma once
 #include <Windows.h>
-
+#include "MemoryPool.h"
 class Packet
 {
 public:
@@ -46,8 +46,9 @@ public:
 
 
 
-
+	//=================================================================================================
 	// 연산자 오퍼레이터.
+	//=================================================================================================
 	Packet	&operator = (Packet &SrcPacket);
 
 	//////////////////////////////////////////////////////////////////////////
@@ -135,8 +136,63 @@ protected:
 	//------------------------------------------------------------
 	int		_iDataSize;
 
+	
 
 
 
+	//=================================================================================================
+	//내장된 메모리풀
+	//=================================================================================================
+public:
+
+	static Hitchhiker::CMemoryPool<Packet> *PacketPool;
+	int RefCnt=0;
+public:
+	static void InitializePacketPool (void)
+	{
+		if ( PacketPool == NULL )
+		{
+			PacketPool = new Hitchhiker::CMemoryPool<Packet>;
+		}
+		return;
+	}
+	//return: Packet *
+	static Packet *Alloc (void)
+	{
+
+		if ( PacketPool == NULL )
+		{
+			//최초 1번 new로 할당받아서 저장된다.
+			InterlockedCompareExchangePointer (( volatile PVOID * )PacketPool, NULL, new Hitchhiker::CMemoryPool<Packet>);
+		}
+
+		PacketPool->Lock ();
+		Packet *p = PacketPool->Alloc ();
+		PacketPool->Free ();
+
+		p->AddRefCnt ();
+
+		return p;
+
+	}
+
+	//return void
+	static void Free (Packet *p)
+	{
+		if ( 0 == InterlockedDecrement (( volatile long * )&p->RefCnt) )
+		{
+			PacketPool->Lock ();
+			PacketPool->Free (p);
+			PacketPool->Free ();
+		}
+
+		return;
+	}
+	void  AddRefCnt ()
+	{
+		InterlockedIncrement (( volatile long * )&RefCnt);
+		
+		return;
+	}
 
 };
