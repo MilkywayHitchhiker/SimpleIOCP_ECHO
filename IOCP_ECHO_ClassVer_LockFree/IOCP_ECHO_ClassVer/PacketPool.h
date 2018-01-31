@@ -22,10 +22,10 @@ public:
 	// 패킷 초기화.
 	void	Initial(int iBufferSize = BUFFER_DEFAULT);
 
-	// RefCnt를 1 증가시킴. 
+	//RefCnt를 1 증가시킴. 
 	void	Add (void);
 
-	// 자기자신 delete하고 빠져나옴.
+	// RefCnt를 하나 차감시키고 REfCnt가 0이 되면 자기자신 delete하고 빠져나옴.
 	void	Release(void);
 
 
