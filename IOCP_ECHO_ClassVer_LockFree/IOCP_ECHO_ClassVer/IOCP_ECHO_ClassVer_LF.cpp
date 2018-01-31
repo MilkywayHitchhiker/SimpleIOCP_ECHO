@@ -60,7 +60,7 @@ ECHO Network;
 int main()
 {
 	wprintf (L"MainThread Start\n");
-	Network.Start (L"127.0.0.1", 6000, 200, 3);
+	Network.Start (L"192.168.10.112", 6000, 200, 3);
 
 
 	UINT AcceptTotal = 0;
@@ -83,7 +83,7 @@ int main()
 			wprintf (L"AcceptTPS = %d \n", AcceptTPS);
 			wprintf (L"Sec RecvTPS = %d \n", RecvTPS);
 			wprintf (L"Sec SendTPS = %d \n", SendTPS);
-			wprintf (L"MemoryPoolFull Cnt = %d \n", MemoryPoolCnt);
+			wprintf (L"MemoryAlloc Cnt = %d \n", MemoryPoolUse);
 			wprintf (L"Connect Session Cnt = %d \n", ConnectSessionCnt);
 
 			wprintf (L"==========================\n");
@@ -93,7 +93,7 @@ int main()
 			RecvTPS = Network.RecvTPS (true);
 			SendTPS = Network.SendTPS (true);
 			ConnectSessionCnt = Network.Use_SessionCnt ();
-			MemoryPoolCnt = Network.Full_MemPoolCnt ();
+			MemoryPoolUse = Network.Alloc_MemPoolCnt ();
 
 			StartTime = EndTime;
 		}

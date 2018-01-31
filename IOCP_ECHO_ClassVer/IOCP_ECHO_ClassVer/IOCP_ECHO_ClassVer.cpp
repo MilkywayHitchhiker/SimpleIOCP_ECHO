@@ -64,7 +64,7 @@ ECHO Network;
 int main()
 {
 	wprintf (L"MainThread Start\n");
-	Network.Start (L"127.0.0.1", 6000, 200, 3);
+	Network.Start (L"192.168.10.112", 6000, 200, 3);
 
 
 	UINT AcceptTotal = 0;

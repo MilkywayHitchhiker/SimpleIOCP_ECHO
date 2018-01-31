@@ -25,7 +25,7 @@ bool CLanServer::Start (WCHAR * ServerIP, int PORT, int Session_Max, int WorkerT
 		return false;
 	}
 
-	Log->SetLogDirectory (L"../LOG_FILE");
+	Log->SetLogDirectory (L"LOG_FILE");
 	wprintf (L"\n NetworkModule Start \n");
 	//소켓 초기화 및 Listen작업.
 	if ( InitializeNetwork (ServerIP, PORT) == false)
